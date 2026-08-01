@@ -126,6 +126,12 @@ uvicorn api.app:app --reload
 
 ![匯入範例 log](docs/images/log_parser_request.png)
 
+### 選用：預覽 prompt 內容(免金鑰)
+
+想先看 pipeline 實際組出的 prompt、但不呼叫 LLM，可用 preview：
+
+`POST /runs/{run_id}/preview`——對 seed 建立的分析批次組出四種 prompt 並寫入 `data/debug_log/{timestamp}/`，**不呼叫 Gemini、不寫入資料庫**，回傳寫出的 debug 檔路徑。與下方 `execute` 走同一條 pipeline，差別只在 preview 不打 API、不入庫，因此免金鑰即可檢視 prompt 組裝結果(system instruction 與 prompt 分離、背景 context 填充)。
+
 ### 選用：自行重跑生成(需 Gemini API key)
 
 上方附帶的分析結果即由此步驟產生。要自己重新生成需自備金鑰(注意：範例角色 context 未隨附本 repo，重跑輸出會與附帶結果不同，完整可重現見 Roadmap)：
