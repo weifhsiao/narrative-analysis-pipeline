@@ -15,20 +15,26 @@ from sqlalchemy.orm import Session
 from service.novel_log_service import assemble_dialogue
 
 
-def _run_prompt(prompt_name: str, timestamp: str, **kwargs) -> dict:
+def _run_prompt(
+    prompt_name: str, timestamp: str, preview: bool = False, **kwargs
+) -> dict:
     ai_model = os.getenv("GEMINI_MODEL", "UNKNOWN")
     start_time = datetime.now()
-    print(f"prompt=[{prompt_name}]  | model=[{ai_model}] | start.")
+    print(f"prompt=[{prompt_name}]  | model=[{ai_model}] | preview=[{preview}] | start.")
+    debug_path = None
     try:
         system, prompt = load_prompt(f"{prompt_name}", **kwargs)
-        response = get_client().generate(prompt, system)
-        write_response(response, timestamp, f"{prompt_name}")
-        write_debug_file(
+        debug_path = write_debug_file(
             f"{'='*10}{prompt_name} ai_model:[{ai_model}]{'='*10}\n\n system_instruction:[{system}]\n\n{prompt}\n\n{'='*10}{prompt_name} end{'='*10}\n\n",
             timestamp,
             f"{prompt_name}",
         )
-        code, content = "SUCCESS", response
+        if preview:
+            code, content = "PREVIEW", None
+        else:
+            response = get_client().generate(prompt, system)
+            write_response(response, timestamp, f"{prompt_name}")
+            code, content = "SUCCESS", response
     except Exception as e:
         code, content = "ERROR", str(e)
 
@@ -44,6 +50,7 @@ def _run_prompt(prompt_name: str, timestamp: str, **kwargs) -> dict:
         "end_time": end_time,
         "result_code": code,
         "result_content": content,
+        "debug_path": debug_path,
     }
 
 
@@ -64,8 +71,11 @@ def run_pipeline(
     character_id: str,
     range_start: datetime | None = None,
     range_end: datetime | None = None,
-) -> int:
-    print(f"[run_pipeline] start | run_id:[{run_id}] character_id:[{character_id}]")
+    preview: bool = False,
+) -> int | dict:
+    print(
+        f"[run_pipeline] start | run_id:[{run_id}] character_id:[{character_id}] preview:[{preview}]"
+    )
     start_time = datetime.now()
     timestamp = str(int(time.time()))
     results = []
@@ -83,6 +93,7 @@ def run_pipeline(
         _run_prompt(
             "recap",
             timestamp,
+            preview=preview,
             page_num=final_page,
             log_content=log_content,
         )
@@ -94,6 +105,7 @@ def run_pipeline(
         _run_prompt(
             "summary",
             timestamp,
+            preview=preview,
             log_content=log_content,
             background_context=background_content,
         )
@@ -104,6 +116,7 @@ def run_pipeline(
         _run_prompt(
             "timeline",
             timestamp,
+            preview=preview,
             existing_timeline=existing_timeline,
             background_context=current_relationship_status,
             log_content=log_content,
@@ -115,12 +128,12 @@ def run_pipeline(
         _run_prompt(
             "relationship",
             timestamp,
+            preview=preview,
             log_content=log_content,
             current_relationship_status=current_relationship_status,
         )
     )
 
-    executions = [_to_prompt_execution(r, run_id) for r in results]
     end_time = datetime.now()
     ok_count = sum(1 for r in results if r["result_code"] == "SUCCESS")
     error_count = sum(1 for r in results if r["result_code"] == "ERROR")
@@ -129,4 +142,12 @@ def run_pipeline(
         f"[run_pipeline] end | total=[{(end_time - start_time).total_seconds()}]s | ok=[{ok_count}] | error=[{error_count}]"
     )
 
+    if preview:
+        # 只組 prompt + 寫 debug 檔，不打 AI、不入庫
+        return {
+            "timestamp": timestamp,
+            "files": [str(r["debug_path"]) for r in results if r["debug_path"]],
+        }
+
+    executions = [_to_prompt_execution(r, run_id) for r in results]
     return insert_prompt_executions(db, executions)
