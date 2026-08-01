@@ -58,14 +58,22 @@ def _to_prompt_execution(result: dict, run_id: int) -> PromptExecution:
     )
 
 
-def run_pipeline(db: Session, run_id: int, character_id: str) -> int:
+def run_pipeline(
+    db: Session,
+    run_id: int,
+    character_id: str,
+    range_start: datetime | None = None,
+    range_end: datetime | None = None,
+) -> int:
     print(f"[run_pipeline] start | run_id:[{run_id}] character_id:[{character_id}]")
     start_time = datetime.now()
     timestamp = str(int(time.time()))
     results = []
 
     # load parameter file
-    log_content, final_page = assemble_dialogue(character_id, db)
+    log_content, final_page = assemble_dialogue(
+        character_id, db, range_start, range_end
+    )
     current_relationship_status = load_character_content(character_id, "relationship")
     scenarios = load_all_scenarios(character_id)
     existing_timeline = load_character_content(character_id, "timeline")
