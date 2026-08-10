@@ -34,10 +34,30 @@ def execute(run_id: int, db: Session = Depends(get_db)):
     if run is None:
         raise HTTPException(status_code=404, detail=f"Run id [{run_id}] not found.")
 
-    character_id = get_run(db, run_id).character_id
-    insert_cnt = run_pipeline(db, run_id, f"{character_id}")
+    character_id = run.character_id
+    range_start = run.range_start
+    range_end = run.range_end
+    insert_cnt = run_pipeline(db, run_id, f"{character_id}", range_start, range_end)
 
     return {"insert_cnt": insert_cnt}
+
+
+@router.post("/{run_id}/preview")
+def preview(run_id: int, db: Session = Depends(get_db)):
+    # 只組 prompt 並寫出 debug 檔，不打 AI、不入庫
+    run = get_run(db, run_id)
+
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run id [{run_id}] not found.")
+
+    return run_pipeline(
+        db,
+        run_id,
+        f"{run.character_id}",
+        run.range_start,
+        run.range_end,
+        preview=True,
+    )
 
 
 @router.get("/{run_id}", response_model=RunResponse)
