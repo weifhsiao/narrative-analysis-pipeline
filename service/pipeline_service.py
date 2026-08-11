@@ -8,7 +8,7 @@ from util.file_util import (
     write_debug_file,
     write_response,
 )
-from util.ai_client import get_client, Attachment
+from util.ai_client import get_client, Attachment, AIBlockedError
 from util.models import PromptExecution
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
@@ -43,7 +43,14 @@ def _run_prompt(
             response = get_client().generate(prompt, system, attachments=attachments)
             write_response(response, timestamp, f"{prompt_name}")
             code, content = "SUCCESS", response
+    except AIBlockedError as e:
+        # 200 but no usable text (content/safety block). Store the real reason,
+        # not a downstream error. generate() raises before write_response, so no
+        # empty response file is written.
+        code, content = "BLOCKED", str(e)
     except Exception as e:
+        # Everything else: API errors (4xx/5xx), network issues, bugs.
+        # str(APIError) already includes the HTTP code, e.g. "400 INVALID_ARGUMENT...".
         code, content = "ERROR", str(e)
 
     end_time = datetime.now()
@@ -164,10 +171,11 @@ def run_pipeline(
 
     end_time = datetime.now()
     ok_count = sum(1 for r in results if r["result_code"] == "SUCCESS")
+    blocked_count = sum(1 for r in results if r["result_code"] == "BLOCKED")
     error_count = sum(1 for r in results if r["result_code"] == "ERROR")
 
     print(
-        f"[run_pipeline] end | total=[{(end_time - start_time).total_seconds()}]s | ok=[{ok_count}] | error=[{error_count}]"
+        f"[run_pipeline] end | total=[{(end_time - start_time).total_seconds()}]s | ok=[{ok_count}] | blocked=[{blocked_count}] | error=[{error_count}]"
     )
 
     if preview:
