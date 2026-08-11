@@ -101,10 +101,9 @@ def parse_log_header_line(line: str):
     if match_obj:
         raw_log_str = match_obj.group(1).strip()
         try:
-            dt_obj = datetime.strptime(raw_log_str, "%Y-%m-%d %H:%M:%S")
-            raw_log_time = dt_obj
-        except ValueError:
-            raw_log_time = raw_log_str
+            raw_log_time = datetime.strptime(raw_log_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError as e:
+            raise ValueError(f"無法解析 raw_log_time:[{raw_log_str}]") from e
 
         sender = match_obj.group(2).strip()
         remaining_content = line[match_obj.end() :].strip()

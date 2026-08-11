@@ -77,8 +77,8 @@ def run_pipeline(
     db: Session,
     run_id: int,
     character_id: str,
-    range_start: datetime | None = None,
-    range_end: datetime | None = None,
+    range_start: datetime | str | None = None,
+    range_end: datetime | str | None = None,
     preview: bool = False,
 ) -> int | dict:
     print(

@@ -116,8 +116,8 @@ def parse_and_import(
 def assemble_dialogue(
     character_id: int,
     db: Session,
-    range_start: datetime | None = None,
-    range_end: datetime | None = None,
+    range_start: datetime | str | None = None,
+    range_end: datetime | str | None = None,
 ) -> tuple[str, str]:
     novel_logs = get_novel_logs(db, character_id, range_start, range_end)
     dialogue_list = []
