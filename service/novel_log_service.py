@@ -34,6 +34,9 @@ def parse_and_import(
     # 玩家的回合
     is_user_turn = False
 
+    # 是否已讀到第一個 turn header；在此之前的行皆為檔案匯出表頭，略過
+    seen_first_header = False
+
     # 迴圈讀行
     for line in content.splitlines():
         # strip
@@ -44,6 +47,7 @@ def parse_and_import(
 
         # 確認是否屬於第一行標籤
         if is_new_turn_header(line):
+            seen_first_header = True
             if block["sender"] is not None:
                 # 先把前一個block儲存清空
                 novel_log_batch_insert_list.extend(
@@ -94,6 +98,10 @@ def parse_and_import(
                 block["content"].append(remaining_content)
                 continue
         else:
+            # 第一個 turn header 之前的行皆為匯出表頭，略過不併入任何 block
+            if not seen_first_header:
+                continue
+
             if is_user_turn:
                 user_content_list[-1]["content"].append(clean_line)
             else:
