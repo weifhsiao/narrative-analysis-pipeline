@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase, relationship
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
 from datetime import datetime
 
 
@@ -15,6 +15,7 @@ class Character(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     novel_logs = relationship("NovelLog")
     runs = relationship("Run")
+    contexts = relationship("CharacterContext")
 
 
 class NovelLog(Base):
@@ -68,3 +69,17 @@ class PromptExecution(Base):
     result_content = Column(String)
 
     parent = relationship("PromptExecution", remote_side=[prompt_exec_id])
+
+
+class CharacterContext(Base):
+    __tablename__ = "character_context"
+
+    context_id = Column(Integer, primary_key=True, autoincrement=True)
+    character_id = Column(Integer, ForeignKey("character.character_id"))
+    context_type = Column(String, nullable=False)
+    context_content = Column(String, nullable=False)
+    sort_order = Column(Integer, default=0)
+    title = Column(String)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

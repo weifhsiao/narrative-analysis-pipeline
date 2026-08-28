@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
 
 
@@ -59,3 +59,44 @@ class PromptExecResponse(BaseModel):
     result_content: str | None
 
     model_config = ConfigDict(from_attributes=True)  # 讓 Pydantic 讀 ORM 物件
+
+
+class ContextModify(BaseModel):
+    # trim:字串前後空白去掉(None 不動)
+    @field_validator("context_type", "context_content", "title", check_fields=False)
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+
+class ContextCreate(ContextModify):
+    character_id: int
+    context_type: str
+    context_content: str
+    sort_order: int = 0
+    title: str | None = None
+
+
+class ContextUpdate(ContextModify):
+    context_type: str | None = None
+    context_content: str | None = None
+    sort_order: int | None = None
+    title: str | None = None
+    is_active: bool = True
+
+
+class ContextListItem(BaseModel):
+    context_id: int
+    character_id: int
+    context_type: str
+    sort_order: int
+    title: str | None
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ContextResponse(ContextListItem):
+    context_content: str
