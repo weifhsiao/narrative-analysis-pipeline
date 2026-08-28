@@ -42,6 +42,20 @@ class RunResponse(BaseModel):
     range_type: int
     range_start: str
     range_end: str
+    exec_cnt: int = 0
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)  # 讓 Pydantic 讀 ORM 物件
+
+
+class PromptExecResponse(BaseModel):
+    prompt_exec_id: int
+    run_id: int
+    prompt_id: int | None
+    parent_exec_id: int | None
+    start_time: datetime
+    end_time: datetime | None
+    result_code: str | None
+    result_content: str | None
 
     model_config = ConfigDict(from_attributes=True)  # 讓 Pydantic 讀 ORM 物件

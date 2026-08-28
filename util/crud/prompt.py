@@ -56,7 +56,11 @@ def update_prompt_execution(
 
 # get_prompt_executions_by_run
 def get_prompt_executions_by_run(db: Session, run_id: int) -> list[PromptExecution]:
-    stmt = select(PromptExecution).where(PromptExecution.run_id == run_id)
+    stmt = (
+        select(PromptExecution)
+        .where(PromptExecution.run_id == run_id)
+        .order_by(PromptExecution.prompt_exec_id)
+    )
 
     return db.execute(stmt).scalars().all()
 

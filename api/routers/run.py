@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from api.schemas import RunCreate, RunResponse
+from api.schemas import RunCreate, RunResponse, PromptExecResponse
 from sqlalchemy.orm import Session
 from util.db_util import get_db
 from util.crud.run import create_run, get_run, get_runs_by_character
+from util.crud.prompt import get_prompt_executions_by_run
 from util.models import Run
 from service.pipeline_service import run_pipeline
 
@@ -74,3 +75,9 @@ def list_runs(character_id: int, db: Session = Depends(get_db)):
     runs = get_runs_by_character(db, character_id)
 
     return runs
+
+
+@router.get("/{run_id}/execution", response_model=list[PromptExecResponse])
+def get_exec_detail_by_id(run_id: int, db: Session = Depends(get_db)):
+    execs = get_prompt_executions_by_run(db, run_id)
+    return execs
