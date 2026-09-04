@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>敘事分析 Pipeline · Demo</title>
+<style>
+  :root{
+    --bg:#f4f1e9; --bg2:#efe9dc;
+    --surface:#fffdf8; --surface2:#faf6ec;
+    --ink:#2b2a26; --muted:#6f6a60; --faint:#9a9284;
+    --line:#e4dccb; --line-strong:#d6cbb3;
+    --navy:#1f3a5f; --navy-soft:#e7edf4;
+    --amber:#b9791f; --amber-soft:#f6ebd6;
+    --user:#a8641b; --ai:#2c4f7c;
+    --ok:#2f7d55; --ok-soft:#e3f1e8;
+    --radius:13px; --radius-sm:9px;
+    --shadow:0 1px 2px rgba(40,32,16,.05), 0 6px 22px rgba(40,32,16,.06);
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei","Noto Sans TC",sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Georgia,"Songti TC","Noto Serif TC",serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#13151b; --bg2:#0f1116; --surface:#1b1e26; --surface2:#171a21;
+      --ink:#e9e6dd; --muted:#a09c90; --faint:#726d63;
+      --line:#2a2e38; --line-strong:#363b47;
+      --navy:#8fb0d8; --navy-soft:#1c2836; --amber:#e0a94e; --amber-soft:#2c2313;
+      --user:#e0a054; --ai:#82a8d6; --ok:#6cc191; --ok-soft:#16281f;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#13151b; --bg2:#0f1116; --surface:#1b1e26; --surface2:#171a21;
+    --ink:#e9e6dd; --muted:#a09c90; --faint:#726d63;
+    --line:#2a2e38; --line-strong:#363b47;
+    --navy:#8fb0d8; --navy-soft:#1c2836; --amber:#e0a94e; --amber-soft:#2c2313;
+    --user:#e0a054; --ai:#82a8d6; --ok:#6cc191; --ok-soft:#16281f;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; overflow:hidden; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono); font-size:.86em}
+
+  /* ---------- app shell ---------- */
+  .app{height:100vh; height:100dvh; display:flex; flex-direction:column}
+  .topbar{flex:0 0 auto; height:54px; display:flex; align-items:center; gap:12px;
+    padding:0 14px 0 10px; border-bottom:1px solid var(--line); background:var(--surface); z-index:30}
+  .icon-btn{appearance:none; border:1px solid transparent; background:transparent; color:var(--muted);
+    width:36px; height:36px; border-radius:8px; cursor:pointer; font-size:18px; display:grid; place-items:center}
+  .icon-btn:hover{background:var(--surface2); color:var(--ink)}
+  .brand{display:flex; flex-direction:column; line-height:1.15}
+  .brand-name{font-weight:600; font-size:15px}
+  .brand-sub{font-size:11.5px; color:var(--faint)}
+  .topbar .spacer{flex:1}
+  .theme-btn{appearance:none; border:1px solid var(--line-strong); background:var(--surface); color:var(--muted);
+    border-radius:8px; height:32px; padding:0 12px; cursor:pointer; font-family:inherit; font-size:13px}
+  .theme-btn:hover{color:var(--ink)}
+
+  .shell{flex:1; display:flex; min-height:0}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{flex:0 0 240px; width:240px; background:var(--surface2); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; overflow:hidden; transition:flex-basis .2s ease, width .2s ease}
+  .sidebar.collapsed{flex-basis:0; width:0; border-right-color:transparent}
+  .side-inner{width:240px; height:100%; overflow-y:auto; padding:16px 12px; display:flex; flex-direction:column}
+  .about{padding:4px 8px 14px; margin-bottom:6px; border-bottom:1px solid var(--line)}
+  .about .t{font-family:var(--serif); font-size:14px; font-weight:600; line-height:1.4}
+  .about .d{font-size:11.5px; color:var(--faint); margin-top:5px; line-height:1.5}
+  .menu-group{margin-top:14px}
+  .menu-label{font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint);
+    font-weight:700; padding:0 8px 6px}
+  .menu-item{display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:8px;
+    font-size:13.5px; color:var(--muted); cursor:default; user-select:none}
+  .menu-item .ic{width:15px; text-align:center; opacity:.7; font-size:13px}
+  .menu-item.active{background:var(--navy-soft); color:var(--navy); font-weight:600; cursor:pointer}
+  .menu-item.disabled{color:var(--faint)}
+  .menu-item.disabled:hover{background:var(--surface)}
+  .menu-item .tag{margin-left:auto; font-size:9.5px; letter-spacing:.04em; padding:2px 6px; border-radius:5px;
+    background:var(--bg2); color:var(--faint); border:1px solid var(--line)}
+  .menu-item.active .tag{background:var(--navy); color:var(--surface); border-color:transparent}
+  .side-foot{margin-top:auto; padding:14px 8px 2px; border-top:1px solid var(--line)}
+  .side-foot .row{display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px}
+  .side-foot .mini{font-size:10.5px; padding:2px 7px; border-radius:999px; background:var(--surface);
+    border:1px solid var(--line); color:var(--faint)}
+  .side-foot .note{font-size:10.5px; color:var(--faint); line-height:1.5}
+
+  /* backdrop for mobile drawer */
+  .backdrop{display:none; position:fixed; inset:54px 0 0 0; background:rgba(0,0,0,.35); z-index:19}
+  .backdrop.on{display:block}
+
+  /* ---------- main column ---------- */
+  .main{flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--bg)}
+  .stepper{flex:0 0 auto; display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+    padding:14px 22px; border-bottom:1px solid var(--line)}
+  .step{appearance:none; text-align:left; cursor:pointer; font-family:inherit; background:var(--surface);
+    border:1px solid var(--line); border-radius:var(--radius-sm); padding:9px 12px; color:var(--muted);
+    transition:.15s; position:relative; overflow:hidden}
+  .step:hover{border-color:var(--line-strong); color:var(--ink)}
+  .step .n{font-family:var(--mono); font-size:11px; opacity:.7}
+  .step .nm{display:block; font-weight:600; font-size:13.5px; margin-top:2px; color:inherit}
+  .step .sub{display:block; font-size:11px; color:var(--faint); margin-top:1px}
+  .step[aria-current="true"]{color:var(--ink); box-shadow:0 0 0 1px var(--navy) inset; border-color:var(--navy)}
+  .step[aria-current="true"] .n{color:var(--navy); opacity:1}
+  .step[aria-current="true"]::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--navy)}
+
+  .scroll{flex:1; overflow-y:auto; min-height:0; padding:22px 22px 28px; scroll-behavior:smooth}
+  .scroll-inner{max-width:860px; margin:0 auto}
+
+  .navbar{flex:0 0 auto; display:flex; align-items:center; gap:14px; padding:12px 22px;
+    border-top:1px solid var(--line); background:var(--surface)}
+  .navbar .prog{font-family:var(--mono); font-size:12px; color:var(--faint)}
+  .navbar .grow{flex:1}
+  .navbar button{font-family:inherit; cursor:pointer; border:1px solid var(--line-strong); background:var(--surface);
+    color:var(--ink); padding:9px 16px; border-radius:var(--radius-sm); font-size:14px}
+  .navbar button:hover:not(:disabled){border-color:var(--navy); color:var(--navy)}
+  .navbar button:disabled{opacity:.4; cursor:default}
+  .navbar .next{background:var(--navy); color:#fff; border-color:transparent}
+  :root[data-theme="dark"] .navbar .next, :root:not([data-theme="light"]) .navbar .next{color:var(--bg)}
+
+  /* ---------- panels ---------- */
+  .panel{display:none; animation:rise .22s ease}
+  .panel.on{display:block}
+  @keyframes rise{from{opacity:0; transform:translateY(5px)}to{opacity:1;transform:none}}
+  .stage-head{margin-bottom:14px}
+  .stage-head h2{font-family:var(--serif); font-size:20px; margin:0 0 5px; font-weight:600}
+  .stage-head p{margin:0; color:var(--muted); max-width:68ch; font-size:14px}
+  .note{font-size:12.5px; color:var(--faint); margin-top:10px; display:flex; gap:6px; align-items:flex-start}
+  .note b{color:var(--muted); font-weight:600; flex:0 0 auto}
+
+  /* stage 1 raw */
+  .rawbox{margin-top:4px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); overflow:hidden}
+  .rawbox .bar{display:flex; align-items:center; gap:8px; padding:9px 14px; border-bottom:1px solid var(--line);
+    background:var(--surface2); font-size:12px; color:var(--muted)}
+  .rawbox .bar .fn{font-family:var(--mono)}
+  .rawbox .bar .dot{width:9px;height:9px;border-radius:50%;background:var(--line-strong)}
+  .rawbox pre{margin:0; padding:14px 16px; font-family:var(--mono); font-size:12px; line-height:1.7;
+    color:var(--ink); white-space:pre-wrap; word-break:break-word; max-height:none}
+  .rawbox pre .ts{color:var(--ai)} .rawbox pre .st{color:var(--faint)}
+
+  /* stage 2 list */
+  .scope{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; padding:12px 15px;
+    background:var(--navy-soft); border-radius:var(--radius); border:1px solid transparent;
+    position:sticky; top:0; z-index:5; box-shadow:var(--shadow)}
+  .scope .lb{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--navy); font-weight:700}
+  .scope .rg{font-family:var(--mono); font-size:13px; color:var(--ink); font-weight:600}
+  .scope .ct{font-size:12.5px; color:var(--muted); margin-left:auto}
+  .list{border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:var(--surface)}
+  .row{border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .row > summary{list-style:none; cursor:pointer; padding:10px 14px; display:flex; align-items:center; gap:12px}
+  .row > summary::-webkit-details-marker{display:none}
+  .row:hover>summary{background:var(--surface2)}
+  .row.sys>summary{background:repeating-linear-gradient(135deg,var(--surface2),var(--surface2) 10px,transparent 10px,transparent 20px)}
+  .row .t{font-family:var(--mono); font-size:12px; color:var(--muted); flex:0 0 auto; width:64px}
+  .row .s{font-size:13px; font-weight:600; flex:0 0 auto; width:74px; display:flex; align-items:center; gap:6px}
+  .row .s .d{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+  .row.user .s .d{background:var(--user)} .row.ai .s .d{background:var(--ai)} .row.sys .s .d{background:var(--faint)}
+  .row.sys .s{color:var(--faint); font-weight:500}
+  .row .pv{flex:1; color:var(--muted); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .row .cr{color:var(--faint); font-size:11px; transition:.2s; flex:0 0 auto}
+  .row[open] .cr{transform:rotate(90deg)}
+  .row[open]>summary{border-bottom:1px solid var(--line); background:var(--surface2)}
+  .row .body{padding:12px 16px 16px 90px}
+  .narrative{font-family:var(--serif); font-size:14.5px; line-height:1.82}
+  .narrative p{margin:.5em 0} .narrative em{color:var(--muted); font-style:italic} .narrative strong{color:var(--ink)}
+  @media (max-width:620px){ .row .body{padding-left:16px} .row .s{width:auto} .row .t{width:56px} }
+
+  /* stage 3 */
+  .flow{display:flex; flex-direction:column; gap:12px}
+  .node{border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); padding:13px 16px; box-shadow:var(--shadow)}
+  .node .lab{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700}
+  .node .txt{margin-top:4px; font-size:14px}
+  .arrow{align-self:center; color:var(--faint); font-size:17px}
+  .prompts{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:12px}
+  .pcard{border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface); padding:11px 12px}
+  .pcard .pn{display:flex; align-items:center; gap:8px; font-weight:600; font-size:13.5px}
+  .pcard .pf{font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:2px}
+  .pcard p{margin:6px 0 0; font-size:12.5px; color:var(--muted)}
+  .swatch{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+  .gemini{display:flex; align-items:center; gap:12px; justify-content:center; background:var(--navy-soft); border-color:transparent}
+  .gemini .g{font-weight:700; color:var(--navy)}
+  @media (max-width:620px){ .prompts{grid-template-columns:1fr} }
+
+  /* stage 4 */
+  .tabs{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px}
+  .tab{appearance:none; font-family:inherit; cursor:pointer; border:1px solid var(--line); background:var(--surface);
+    color:var(--muted); padding:6px 13px; border-radius:999px; font-size:13px; display:flex; gap:7px; align-items:center}
+  .tab:hover{color:var(--ink)}
+  .tab[aria-selected="true"]{background:var(--ink); color:var(--bg); border-color:transparent}
+  .out-panel{display:none} .out-panel.on{display:block; animation:rise .18s ease}
+  .card{border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); padding:18px 20px; box-shadow:var(--shadow)}
+  .card + .card{margin-top:12px}
+  .out-head{display:flex; align-items:center; gap:10px; margin-bottom:12px}
+  .out-head .fmt{font-family:var(--mono); font-size:12px; color:var(--faint)}
+  .out-head .fmt b{color:var(--muted); font-weight:600}
+  .copy-btn{margin-left:auto; appearance:none; font-family:inherit; cursor:pointer; font-size:12.5px;
+    border:1px solid var(--line-strong); background:var(--surface2); color:var(--ink);
+    padding:6px 13px; border-radius:8px; display:inline-flex; align-items:center; gap:6px; transition:.14s}
+  .copy-btn:hover{border-color:var(--navy); color:var(--navy)}
+  .copy-btn.done{border-color:transparent; background:var(--ok-soft); color:var(--ok)}
+  .raw-out{margin:0; white-space:pre-wrap; word-break:break-word; font-family:var(--sans);
+    font-size:13.5px; line-height:1.85; color:var(--ink); max-width:none}
+  .evalbar{margin-top:13px; display:flex; gap:10px; align-items:center; padding:10px 13px; background:var(--ok-soft); border-radius:var(--radius-sm); font-size:12.5px; color:var(--muted)}
+  .evalbar .b{color:var(--ok); font-weight:700; flex:0 0 auto}
+
+  @media (max-width:760px){
+    .sidebar{position:absolute; top:54px; bottom:0; left:0; z-index:20; box-shadow:var(--shadow)}
+    .sidebar.collapsed{flex-basis:240px; width:240px; transform:translateX(-100%); border-right-color:var(--line)}
+    .stepper{grid-template-columns:repeat(2,1fr)} .step .sub{display:none}
+    .scroll{padding:16px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <button class="icon-btn" id="menuToggle" title="選單" aria-label="切換選單">☰</button>
+    <div class="brand">
+      <span class="brand-name">敘事分析 Pipeline</span>
+      <span class="brand-sub">互動走查 Demo · 純前端</span>
+    </div>
+    <span class="spacer"></span>
+    <button class="theme-btn" id="themeBtn" type="button">◐ 主題</button>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-inner">
+        <div class="about">
+          <div class="t">把長篇互動小說，整理成可累積的結構化分析</div>
+          <div class="d">原始對話動輒七、八萬字。pipeline 先解析、再由 LLM 批次產出四種分析，結果可查詢、可累積、可重跑。</div>
+        </div>
+
+        <nav>
+          <div class="menu-group">
+            <div class="menu-label">分析</div>
+            <div class="menu-item active"><span class="ic">◆</span>Pipeline 走查<span class="tag">現在</span></div>
+          </div>
+          <div class="menu-group">
+            <div class="menu-label">資料</div>
+            <div class="menu-item disabled"><span class="ic">↥</span>原始 log 匯入<span class="tag">規劃中</span></div>
+            <div class="menu-item disabled"><span class="ic">▤</span>Run 歷史<span class="tag">規劃中</span></div>
+            <div class="menu-item disabled"><span class="ic">☺</span>角色 Context<span class="tag">規劃中</span></div>
+          </div>
+          <div class="menu-group">
+            <div class="menu-label">品質</div>
+            <div class="menu-item disabled"><span class="ic">✓</span>Eval 報告<span class="tag">規劃中</span></div>
+          </div>
+          <div class="menu-group">
+            <div class="menu-label">設定</div>
+            <div class="menu-item disabled"><span class="ic">❏</span>Prompt 管理<span class="tag">規劃中</span></div>
+            <div class="menu-item disabled"><span class="ic">⚙</span>模型 Provider<span class="tag">規劃中</span></div>
+          </div>
+        </nav>
+
+        <div class="side-foot">
+          <div class="row">
+            <span class="mini">Python</span><span class="mini">FastAPI</span><span class="mini">SQLite</span><span class="mini">Gemini</span>
+          </div>
+          <div class="note">範例為虛構故事 · 資料取自 examples/</div>
+        </div>
+      </div>
+    </aside>
+    <div class="backdrop" id="backdrop"></div>
+
+    <main class="main">
+      <nav class="stepper" id="stepper" aria-label="pipeline 階段">
+        <button class="step" data-step="0"><span class="n">01</span><span class="nm">原始 log</span><span class="sub">未結構化文字</span></button>
+        <button class="step" data-step="1"><span class="n">02</span><span class="nm">解析</span><span class="sub">切 turn · 掛時間</span></button>
+        <button class="step" data-step="2"><span class="n">03</span><span class="nm">Pipeline 執行</span><span class="sub">組 prompt · LLM</span></button>
+        <button class="step" data-step="3"><span class="n">04</span><span class="nm">四種輸出</span><span class="sub">分析結果</span></button>
+      </nav>
+
+      <div class="scroll" id="scroll">
+        <div class="scroll-inner">
+          <!-- STAGE 1 -->
+          <section class="panel" data-panel="0">
+            <div class="stage-head">
+              <h2>① 原始 log</h2>
+              <p>使用者從互動小說平台匯出的原始紀錄——時間戳、說話者、內文擠成一串未結構化的文字。這是 pipeline 的原料。</p>
+            </div>
+            <div class="rawbox">
+              <div class="bar"><span class="dot"></span><span class="fn">sample_log.txt</span></div>
+              <pre id="raw"></pre>
+            </div>
+            <div class="note"><b>注意</b><span>這一坨文字沒辦法直接依時間查詢、也不好核對範圍——所以下一步要先把它切成一則一則的記錄。</span></div>
+          </section>
+
+          <!-- STAGE 2 -->
+          <section class="panel" data-panel="1">
+            <div class="stage-head">
+              <h2>② 解析</h2>
+              <p>parser 依每則的時間戳與說話者，把整串文字切成一則一則的 turn，並掛上 <code>log time</code> 當索引。這樣一個 run 才能依時間區段把要分析的範圍撈出來。</p>
+            </div>
+            <div class="scope" id="scope"></div>
+            <div class="list" id="list"></div>
+            <div class="note"><b>確認範圍</b><span>此頁只是<strong>標示</strong>這個 run 撈到的區段（上方時間窗），不提供選取；範圍由後端 run 的時間區段決定。點任一則展開看內文。</span></div>
+          </section>
+
+          <!-- STAGE 3 -->
+          <section class="panel" data-panel="2">
+            <div class="stage-head">
+              <h2>③ Pipeline 執行</h2>
+              <p>把結構化 log 與角色設定 context 組裝成四組 prompt，各自帶自己的 system instruction，批次送給 Gemini，回填結果。</p>
+            </div>
+            <div class="flow" id="flow"></div>
+            <div class="note"><b>示意</b><span>本頁為靜態 demo，不會真的呼叫 API；真實執行由後端 <code>run_pipeline</code> 完成。prompt 以純文字檔外部化，措辭調整不需改程式。</span></div>
+          </section>
+
+          <!-- STAGE 4 -->
+          <section class="panel" data-panel="3">
+            <div class="stage-head">
+              <h2>④ 四種輸出</h2>
+              <p>同一段劇情，四種分析視角。形狀刻意不同——條列、時間軸、關係結構、單段摘要——各自服務不同的閱讀需求。</p>
+            </div>
+            <div class="tabs" id="tabs"></div>
+            <div id="out"></div>
+            <div class="evalbar"><span class="b">✓ eval</span><span>結果存入 DB 後，由解耦的 <code>length_check</code> 直接讀取檢查，不重呼叫 LLM——eval 是開發者品質工具，不佔用 API 額度。</span></div>
+          </section>
+        </div>
+      </div>
+
+      <div class="navbar">
+        <span class="prog" id="prog">1 / 4</span>
+        <span class="grow"></span>
+        <button id="prev" type="button">← 上一步</button>
+        <button id="next" class="next" type="button">下一步 →</button>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  var D = window.DEMO_DATA || {turns:[], results:{}, raw:''};
+  var esc=function(s){return (s==null?'':String(s)).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
+  function inline(s){ s=esc(s); s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>'); s=s.replace(/\*([^*\n]+)\*/g,'<em>$1</em>'); return s; }
+  function narrative(t){ if(!t) return ''; return t.split(/\n\s*\n/).map(function(b){return '<p>'+inline(b).replace(/\n/g,'<br>')+'</p>';}).join(''); }
+  function firstLine(t){ return (t||'').replace(/\s+/g,' ').trim().replace(/[*>#]/g,'').slice(0,120); }
+  function hhmmss(ts){ var m=(ts||'').match(/\d{2}:\d{2}:\d{2}/); return m?m[0]:(ts||''); }
+
+  /* ---- STAGE 1: raw ---- */
+  (function(){
+    var pre=document.getElementById('raw');
+    var html=esc(D.raw||'').replace(/^(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\])(\s*[^\n:]*:?)/gm,'<span class="ts">$1</span><span class="st">$2</span>');
+    pre.innerHTML=html;
+  })();
+
+  /* ---- STAGE 2: parsed list ---- */
+  (function(){
+    var scope=document.getElementById('scope'), list=document.getElementById('list');
+    var shown=D.turns.filter(function(t){return (t.content||'').trim()!=='';});
+    var times=shown.map(function(t){return t.time;}).filter(Boolean);
+    var first=times[0]||'', last=times[times.length-1]||'';
+    scope.innerHTML='<span class="lb">分析範圍</span><span class="rg">'+esc(first)+'  →  '+esc(last)+'</span>'+
+      '<span class="ct">共 '+shown.length+' 則（run 時間區段）</span>';
+    shown.forEach(function(t){
+      var cls = t.kind==='system' ? 'sys' : (t.role==='ai'?'ai':'user');
+      var name = t.kind==='system' ? '背景' : t.sender;
+      var d=document.createElement('details'); d.className='row '+cls;
+      d.innerHTML='<summary>'+
+          '<span class="t">'+esc(hhmmss(t.time))+'</span>'+
+          '<span class="s"><span class="d"></span>'+esc(name)+'</span>'+
+          '<span class="pv">'+esc(firstLine(t.content))+'</span>'+
+          '<span class="cr">▶</span>'+
+        '</summary>'+
+        '<div class="body"><div class="narrative">'+narrative(t.content)+'</div></div>';
+      list.appendChild(d);
+    });
+  })();
+
+  /* ---- STAGE 3: flow ---- */
+  (function(){
+    var host=document.getElementById('flow');
+    var dlg=D.turns.filter(function(t){return t.kind==='dialogue';});
+    var times=D.turns.map(function(t){return t.time;}).filter(Boolean);
+    var prompts=[
+      {n:'摘要 summary',f:'prompts/summary.txt',c:'var(--amber)',d:'單段濃縮這一批劇情的關鍵事件與重大轉折。'},
+      {n:'時間軸 timeline',f:'prompts/timeline.txt',c:'var(--ai)',d:'依日期整理事件，標注狀態變化。'},
+      {n:'人物關係 relationship',f:'prompts/relationship.txt',c:'var(--user)',d:'追蹤稱呼、信物、約定與關係狀態的演變。'},
+      {n:'事前提醒 recap',f:'prompts/recap.txt',c:'var(--ok)',d:'［發生過的劇情］／［當前劇情］，供下次接續。'}
+    ];
+    host.innerHTML=
+      '<div class="node"><div class="lab">輸入</div><div class="txt">結構化 log <b>'+dlg.length+' 則對話</b> · 時間窗 '+esc(hhmmss(times[0]))+'–'+esc(hhmmss(times[times.length-1]))+' ＋ 角色設定 context</div></div>'+
+      '<div class="arrow">↓</div>'+
+      '<div class="node"><div class="lab">組裝 prompt</div><div class="txt">為四種分析各組一份：system instruction ＋ prompt 本體 ＋ 背景 context</div>'+
+        '<div class="prompts">'+prompts.map(function(p){return '<div class="pcard"><div class="pn"><span class="swatch" style="background:'+p.c+'"></span>'+p.n+'</div><div class="pf">'+p.f+'</div><p>'+p.d+'</p></div>';}).join('')+'</div></div>'+
+      '<div class="arrow">↓</div>'+
+      '<div class="node gemini"><span class="g">Gemini</span><span style="color:var(--muted);font-size:13px">批次生成 · 空/被擋回應會記錄診斷</span></div>'+
+      '<div class="arrow">↓</div>'+
+      '<div class="node"><div class="lab">輸出並存入 DB</div><div class="txt">四份結果寫進 <code>prompt_execution</code>，可查詢、可重跑、成為 eval 的資料來源 →</div></div>';
+  })();
+
+  /* ---- STAGE 4: outputs (raw markdown text + copy) ---- */
+  var R=D.results||{};
+  var OUT=[
+    {key:'recap',name:'事前提醒',color:'var(--ok)'},
+    {key:'timeline',name:'時間軸',color:'var(--ai)'},
+    {key:'relationship',name:'人物關係',color:'var(--user)'},
+    {key:'summary',name:'摘要',color:'var(--amber)'}
+  ];
+  function fallbackCopy(text){try{var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();document.execCommand('copy');document.body.removeChild(ta);}catch(e){}}
+  function copyText(text,btn){
+    var mark=function(){var old=btn.getAttribute('data-lbl');btn.classList.add('done');btn.innerHTML='✓ 已複製';setTimeout(function(){btn.classList.remove('done');btn.innerHTML=old;},1500);};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(mark,function(){fallbackCopy(text);mark();});}
+    else{fallbackCopy(text);mark();}
+  }
+  (function(){var tabs=document.getElementById('tabs'),out=document.getElementById('out');
+    OUT.forEach(function(o,idx){
+      var b=document.createElement('button');b.className='tab';b.type='button';b.setAttribute('aria-selected',idx===0?'true':'false');
+      b.innerHTML='<span class="swatch" style="background:'+o.color+'"></span>'+o.name;b.onclick=function(){sel(idx);};tabs.appendChild(b);
+      var text=R[o.key]||'（無資料）';
+      var p=document.createElement('div');p.className='out-panel'+(idx===0?' on':'');
+      var card=document.createElement('div');card.className='card';
+      var head=document.createElement('div');head.className='out-head';
+      head.innerHTML='<span class="fmt">格式 <b>markdown / 純文字</b></span>';
+      var btn=document.createElement('button');btn.className='copy-btn';btn.type='button';btn.innerHTML='⧉ 複製全文';btn.setAttribute('data-lbl','⧉ 複製全文');
+      btn.onclick=function(){copyText(text,btn);};
+      head.appendChild(btn);
+      var pre=document.createElement('pre');pre.className='raw-out';pre.textContent=text;
+      card.appendChild(head);card.appendChild(pre);p.appendChild(card);out.appendChild(p);
+    });
+    function sel(idx){[].forEach.call(tabs.children,function(b,i){b.setAttribute('aria-selected',i===idx?'true':'false');});[].forEach.call(out.children,function(p,i){p.className='out-panel'+(i===idx?' on':'');});}
+  })();
+
+  /* ---- stepper nav ---- */
+  var step=0,TOTAL=4;var panels=[].slice.call(document.querySelectorAll('.panel'));var steps=[].slice.call(document.querySelectorAll('.step'));
+  var scroller=document.getElementById('scroll');
+  function go(n){step=Math.max(0,Math.min(TOTAL-1,n));
+    panels.forEach(function(p,i){p.classList.toggle('on',i===step);});
+    steps.forEach(function(s,i){s.setAttribute('aria-current',i===step?'true':'false');});
+    document.getElementById('prev').disabled=step===0;var next=document.getElementById('next');next.disabled=step===TOTAL-1;
+    next.textContent=step===TOTAL-1?'完成 ✓':'下一步 →';document.getElementById('prog').textContent=(step+1)+' / '+TOTAL;
+    scroller.scrollTop=0;}
+  steps.forEach(function(s){s.onclick=function(){go(+s.dataset.step);};});
+  document.getElementById('prev').onclick=function(){go(step-1);};
+  document.getElementById('next').onclick=function(){go(step+1);};
+  go(0);
+
+  /* ---- sidebar toggle ---- */
+  var sidebar=document.getElementById('sidebar'),backdrop=document.getElementById('backdrop');
+  var isNarrow=function(){return window.matchMedia('(max-width:760px)').matches;};
+  // 桌面預設展開；窄螢幕預設收合
+  if(isNarrow()) sidebar.classList.add('collapsed');
+  document.getElementById('menuToggle').onclick=function(){
+    sidebar.classList.toggle('collapsed');
+    if(isNarrow()) backdrop.classList.toggle('on', !sidebar.classList.contains('collapsed'));
+  };
+  backdrop.onclick=function(){sidebar.classList.add('collapsed');backdrop.classList.remove('on');};
+
+  /* ---- theme ---- */
+  var tb=document.getElementById('themeBtn');
+  function stored(){try{return localStorage.getItem('demo-theme');}catch(e){return null;}}
+  function apply(v){if(v)document.documentElement.setAttribute('data-theme',v);else document.documentElement.removeAttribute('data-theme');}
+  apply(stored());
+  tb.onclick=function(){var cur=document.documentElement.getAttribute('data-theme');
+    var dark=cur?cur==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;var nv=dark?'light':'dark';apply(nv);
+    try{localStorage.setItem('demo-theme',nv);}catch(e){}};
+})();
+</script>
+</body>
+</html>
