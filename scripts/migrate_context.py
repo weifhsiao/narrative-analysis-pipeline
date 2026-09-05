@@ -4,6 +4,7 @@
     python migrate_context.py <character_id> --write     # 真的寫入
 略過 bk/(備份)。已存在 context 的角色預設中止(避免重複),--force 才覆寫式再塞。
 """
+import re
 import sys
 from pathlib import Path
 from util.db_util import SessionLocal
@@ -12,6 +13,12 @@ from util.models import CharacterContext
 BASE = Path("./data")
 
 TYPE_TITLE = {"relationship": "關係狀態總結", "timeline": "時間軸"}
+
+
+def scenario_num(p: Path) -> int:
+    # 照檔名裡的數字排(自然排序),相容 scenario1 / scenario_10 兩種命名
+    m = re.search(r"(\d+)", p.stem)
+    return int(m.group(1)) if m else 0
 
 
 def roman(n: int) -> str:
@@ -40,10 +47,10 @@ def build_rows(character_id: int) -> list[CharacterContext]:
                     context_content=content, sort_order=0, title=TYPE_TITLE[ctype],
                 ))
 
-    # scenarios:多檔,照檔名排,sort_order=1..n,title=檔名(scenario1..)
+    # scenarios:多檔,照檔名數字排,sort_order=1..n
     scenario_dir = root / "scenarios"
     if scenario_dir.exists():
-        for i, f in enumerate(sorted(scenario_dir.glob("*.txt")), start=1):
+        for i, f in enumerate(sorted(scenario_dir.glob("*.txt"), key=scenario_num), start=1):
             content = f.read_text(encoding="utf-8").strip()
             if content:
                 rows.append(CharacterContext(
