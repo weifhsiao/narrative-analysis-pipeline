@@ -13,6 +13,7 @@ from util.models import PromptExecution
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
 from service.novel_log_service import assemble_dialogue
+from service.character_context_service import load_context
 
 
 def _run_prompt(
@@ -24,7 +25,9 @@ def _run_prompt(
 ) -> dict:
     ai_model = os.getenv("GEMINI_MODEL", "UNKNOWN")
     start_time = datetime.now()
-    print(f"prompt=[{prompt_name}]  | model=[{ai_model}] | preview=[{preview}] | start.")
+    print(
+        f"prompt=[{prompt_name}]  | model=[{ai_model}] | preview=[{preview}] | start."
+    )
     debug_path = None
     try:
         system, prompt = load_prompt(f"{prompt_name}", **kwargs)
@@ -99,9 +102,9 @@ def run_pipeline(
     log_content, final_page = assemble_dialogue(
         character_id, db, range_start, range_end
     )
-    current_relationship_status = load_character_content(character_id, "relationship")
-    scenarios = load_all_scenarios(character_id)
-    existing_timeline = load_character_content(character_id, "timeline")
+    current_relationship_status = load_context(db, character_id, "relationship")
+    scenarios = load_context(db, character_id, "scenario")
+    existing_timeline = load_context(db, character_id, "timeline")
 
     # log 輸入模式:inline(純文字內嵌,預設) / attachment(夾檔)
     log_input_mode = os.getenv("LOG_INPUT_MODE", "inline")
@@ -120,16 +123,16 @@ def run_pipeline(
         log_attachments = None
 
     # short_summary
-    results.append(
-        _run_prompt(
-            "recap",
-            timestamp,
-            preview=preview,
-            attachments=log_attachments,
-            page_num=final_page,
-            log_content=log_kwarg,
-        )
-    )
+    # results.append(
+    #     _run_prompt(
+    #         "recap",
+    #         timestamp,
+    #         preview=preview,
+    #         attachments=log_attachments,
+    #         page_num=final_page,
+    #         log_content=log_kwarg,
+    #     )
+    # )
 
     # summary
     background_content = f"{current_relationship_status}\n\n{scenarios}\n\n"
