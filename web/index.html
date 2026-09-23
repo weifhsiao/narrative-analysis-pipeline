@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Narrative Pipeline Admin</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "PingFang TC", sans-serif; color: #222; background: #fff; }
+  header { padding: 10px 16px; background: #2d2d2d; color: #fff; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header select { padding: 4px 8px; }
+  #toast { margin-left: auto; font-size: 13px; opacity: 0; transition: opacity .2s; }
+  #toast.show { opacity: 1; }
+  #toast.err { color: #ff9c9c; }
+  #toast.ok { color: #9cffb0; }
+
+  /* tab bar */
+  .tabbar { display: flex; gap: 2px; background: #efefef; border-bottom: 1px solid #ddd; padding: 0 12px; }
+  .tabbar button { border: 0; background: transparent; padding: 10px 18px; font-size: 14px; cursor: pointer; color: #555; border-bottom: 2px solid transparent; }
+  .tabbar button.active { color: #3b5bdb; border-bottom-color: #3b5bdb; font-weight: 600; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* context tab layout */
+  .split { display: flex; height: calc(100vh - 44px - 41px); }
+  #list { width: 340px; border-right: 1px solid #ddd; overflow-y: auto; }
+  #detail { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .ctx-toolbar { padding: 8px 14px; border-bottom: 1px solid #eee; }
+
+  .row { padding: 10px 14px; border-bottom: 1px solid #eee; cursor: pointer; }
+  .row:hover { background: #f5f7ff; }
+  .row.active { background: #e7edff; }
+  .row .title { font-weight: 600; font-size: 14px; }
+  .row .meta { font-size: 12px; color: #777; margin-top: 3px; display: flex; gap: 8px; }
+  .badge { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; line-height: 18px; }
+  .badge.type { background: #eef; color: #446; }
+  .badge.off { background: #fdd; color: #944; }
+
+  .empty { padding: 20px; color: #999; font-size: 14px; }
+
+  /* generic sections for logs / runs */
+  .section { padding: 16px 20px; border-bottom: 1px solid #eee; }
+  .section h2 { font-size: 14px; margin: 0 0 12px; color: #333; }
+  .field { display: inline-flex; flex-direction: column; gap: 4px; margin: 0 14px 10px 0; vertical-align: top; }
+  .field label { font-size: 12px; color: #555; }
+  .field input, .field select { padding: 6px 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+
+  form label { display: block; font-size: 12px; color: #555; margin: 12px 0 4px; }
+  form input[type=text], form input[type=number], form textarea, form select {
+    width: 100%; padding: 6px 8px; font-size: 14px; font-family: inherit;
+    border: 1px solid #ccc; border-radius: 4px;
+  }
+  form textarea { min-height: 320px; resize: vertical; line-height: 1.5; }
+  .inline { display: flex; gap: 16px; align-items: center; }
+  .inline > div { flex: 1; }
+  .chk { display: flex; align-items: center; gap: 6px; margin-top: 24px; }
+  .ro { color: #888; font-size: 12px; margin-bottom: 8px; }
+  .actions { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
+  button.act { padding: 8px 18px; font-size: 14px; border: 0; border-radius: 4px; cursor: pointer; }
+  button.primary { background: #3b5bdb; color: #fff; }
+  button.primary:disabled { background: #aab; cursor: default; }
+  button.ghost { background: #eee; }
+  button.small { padding: 4px 10px; font-size: 12px; margin-right: 4px; }
+  button.danger { background: #d64545; color: #fff; }
+  .dirty-hint { font-size: 12px; color: #c47; }
+  .cc-count { font-size: 12px; color: #999; font-weight: normal; }
+
+  /* data tables */
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #e3e3e3; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #f6f6f6; position: sticky; top: 0; }
+  td.content { max-width: 480px; white-space: pre-wrap; word-break: break-word; }
+  .spin { color: #a60; }
+  pre.exec { background: #f7f7f9; border: 1px solid #e3e3e3; border-radius: 4px; padding: 10px; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow-y: auto; font-size: 12px; }
+  .code-SUCCESS { color: #197a3a; font-weight: 600; }
+  .code-PREVIEW { color: #666; font-weight: 600; }
+  .code-BLOCKED { color: #b26a00; font-weight: 600; }
+  .code-ERROR { color: #c0392b; font-weight: 600; }
+  .muted { color: #888; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Narrative Pipeline</h1>
+  <label style="font-size:13px">角色
+    <select id="charSelect"></select>
+  </label>
+  <span id="toast"></span>
+</header>
+
+<div class="tabbar">
+  <button id="tab-context" class="active" onclick="switchTab('context')">Context</button>
+  <button id="tab-logs" onclick="switchTab('logs')">Logs</button>
+  <button id="tab-runs" onclick="switchTab('runs')">Runs</button>
+</div>
+
+<!-- ===== Context ===== -->
+<div id="panel-context" class="panel active">
+  <div class="split">
+    <div style="width:340px; border-right:1px solid #ddd; display:flex; flex-direction:column;">
+      <div class="ctx-toolbar">
+        <button type="button" class="act ghost" onclick="newContext()">＋ 新增 context</button>
+      </div>
+      <div id="list" style="flex:1; border:0;"><div class="empty">請先選擇角色</div></div>
+    </div>
+    <div id="detail"><div class="empty">從左側選一筆 context</div></div>
+  </div>
+</div>
+
+<!-- ===== Logs ===== -->
+<div id="panel-logs" class="panel">
+  <div class="section">
+    <h2>匯入 log</h2>
+    <div class="field">
+      <label>檔案（.txt）</label>
+      <input type="file" id="logFile" accept=".txt,text/plain">
+    </div>
+    <div class="field">
+      <label>user_name</label>
+      <input type="text" id="userName" value="admin">
+    </div>
+    <button type="button" class="act primary" onclick="importLog()">匯入</button>
+    <span id="importResult" class="muted"></span>
+  </div>
+  <div class="section" style="border-bottom:0;">
+    <h2>查詢 log</h2>
+    <div class="field">
+      <label>range_start（選填）</label>
+      <input type="text" id="logStart" placeholder="YYYY-MM-DD HH:MM:SS" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>range_end（選填）</label>
+      <input type="text" id="logEnd" placeholder="YYYY-MM-DD HH:MM:SS" autocomplete="off">
+    </div>
+    <button type="button" class="act ghost" onclick="queryLogs()">查詢</button>
+    <span id="logCount" class="muted"></span>
+    <div id="logTable" class="tablewrap" style="margin-top:12px;"></div>
+  </div>
+</div>
+
+<!-- ===== Runs ===== -->
+<div id="panel-runs" class="panel">
+  <div class="section">
+    <h2>新增 run</h2>
+    <div class="field">
+      <label>range_type</label>
+      <select id="runType">
+        <option value="0" selected>0（預設／未設定）</option>
+        <option value="1">1（log_time）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>range_start ＊</label>
+      <input type="text" id="runStart" placeholder="YYYY-MM-DD HH:MM:SS" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>range_end ＊</label>
+      <input type="text" id="runEnd" placeholder="YYYY-MM-DD HH:MM:SS" autocomplete="off">
+    </div>
+    <button type="button" class="act primary" onclick="createRun()">建立 run</button>
+  </div>
+  <div class="section">
+    <h2>run 列表</h2>
+    <div id="runTable" class="tablewrap"></div>
+  </div>
+  <div class="section" style="border-bottom:0;">
+    <h2>結果 / preview</h2>
+    <div id="runResult"><div class="muted">按某筆 run 的 preview 或 execute，結果會顯示在這裡。</div></div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let current = null;   // context detail 原始值
+let activeId = null;
+let currentTab = "context";
+
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show " + (kind || "");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.className = ""; }, 2800);
+}
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = JSON.stringify((await res.json()).detail) || detail; } catch (e) {}
+    throw new Error(detail);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function charId() { return document.getElementById("charSelect").value; }
+
+// ---------- tabs ----------
+function switchTab(name) {
+  currentTab = name;
+  ["context", "logs", "runs"].forEach(t => {
+    document.getElementById("tab-" + t).classList.toggle("active", t === name);
+    document.getElementById("panel-" + t).classList.toggle("active", t === name);
+  });
+  if (name === "context") loadList();
+  else if (name === "logs") { /* 查詢由使用者按鈕觸發 */ }
+  else if (name === "runs") loadRuns();
+}
+
+// ---------- characters (global) ----------
+async function loadCharacters() {
+  const sel = document.getElementById("charSelect");
+  try {
+    const chars = await api("/characters/");
+    sel.innerHTML = "";
+    if (!chars.length) { sel.innerHTML = "<option value=''>（無角色）</option>"; return; }
+    for (const c of chars) {
+      const o = document.createElement("option");
+      o.value = c.character_id;
+      o.textContent = `#${c.character_id} ${c.name}`;
+      sel.appendChild(o);
+    }
+    onCharChange();
+  } catch (e) { toast("載入角色失敗：" + e.message, "err"); }
+}
+
+function onCharChange() {
+  // 切角色時重置各 tab 的暫存畫面
+  activeId = null; current = null;
+  document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
+  document.getElementById("logTable").innerHTML = "";
+  document.getElementById("logCount").textContent = "";
+  document.getElementById("runResult").innerHTML = "<div class='muted'>按某筆 run 的 preview 或 execute，結果會顯示在這裡。</div>";
+  if (currentTab === "context") loadList();
+  else if (currentTab === "runs") loadRuns();
+}
+
+// ========== Context tab ==========
+async function loadList() {
+  const cid = charId();
+  const box = document.getElementById("list");
+  if (!cid) { box.innerHTML = "<div class='empty'>請先選擇角色</div>"; return; }
+  try {
+    const items = await api(`/character_contexts/?character_id=${cid}`);
+    if (!items.length) { box.innerHTML = "<div class='empty'>此角色尚無 context</div>"; return; }
+    box.innerHTML = "";
+    for (const it of items) {
+      const div = document.createElement("div");
+      div.className = "row" + (it.context_id === activeId ? " active" : "");
+      div.dataset.id = it.context_id;
+      div.innerHTML = `
+        <div class="title">${escapeHtml(it.title || "(無標題)")}</div>
+        <div class="meta">
+          <span class="badge type">${escapeHtml(it.context_type)}</span>
+          <span>sort ${it.sort_order}</span>
+          <span>#${it.context_id}</span>
+          ${it.is_active ? "" : "<span class='badge off'>停用</span>"}
+        </div>`;
+      div.onclick = () => loadDetail(it.context_id);
+      box.appendChild(div);
+    }
+  } catch (e) { toast("載入清單失敗：" + e.message, "err"); }
+}
+
+async function loadDetail(id) {
+  try {
+    current = await api(`/character_contexts/${id}`);
+    activeId = id;
+    renderDetail();
+    document.querySelectorAll("#list .row").forEach(r =>
+      r.classList.toggle("active", Number(r.dataset.id) === id));
+  } catch (e) { toast("載入詳情失敗：" + e.message, "err"); }
+}
+
+function renderDetail() {
+  const c = current;
+  const d = document.getElementById("detail");
+  d.innerHTML = `
+    <div class="ro">context_id #${c.context_id} · character_id #${c.character_id}
+      · 建立 ${fmt(c.created_at)} · 更新 ${fmt(c.updated_at)}</div>
+    <form id="editForm" onsubmit="return false">
+      <div class="inline">
+        <div>
+          <label>title</label>
+          <input type="text" name="title" value="${escapeAttr(c.title || "")}">
+        </div>
+        <div>
+          <label>context_type</label>
+          <input type="text" name="context_type" value="${escapeAttr(c.context_type)}">
+        </div>
+      </div>
+      <div class="inline">
+        <div>
+          <label>sort_order</label>
+          <input type="number" name="sort_order" value="${c.sort_order}">
+        </div>
+        <div class="chk">
+          <input type="checkbox" id="is_active" name="is_active" ${c.is_active ? "checked" : ""}>
+          <label for="is_active" style="margin:0">is_active（啟用）</label>
+        </div>
+      </div>
+      <label>context_content <span class="cc-count" id="ccCount"></span></label>
+      <textarea name="context_content" oninput="updateCount(this)">${escapeHtml(c.context_content)}</textarea>
+      <div class="actions">
+        <button type="button" class="act primary" onclick="save()">儲存變更</button>
+        <button type="button" class="act ghost" onclick="renderDetail()">還原</button>
+        <span class="dirty-hint" id="dirty"></span>
+      </div>
+    </form>`;
+  updateCount(d.querySelector("[name=context_content]"));
+}
+
+function collectChanges() {
+  const f = document.getElementById("editForm");
+  const changes = {};
+  const title = f.title.value.trim();
+  const type = f.context_type.value.trim();
+  const sort = Number(f.sort_order.value);
+  const content = f.context_content.value.trim();
+  const active = f.is_active.checked;
+  if (title !== (current.title || "").trim()) changes.title = title;
+  if (type !== current.context_type.trim()) changes.context_type = type;
+  if (sort !== current.sort_order) changes.sort_order = sort;
+  if (content !== current.context_content.trim()) changes.context_content = content;
+  if (active !== current.is_active) changes.is_active = active;
+  return changes;
+}
+
+async function save() {
+  const changes = collectChanges();
+  if (Object.keys(changes).length === 0) { toast("沒有變更", ""); return; }
+  try {
+    const updated = await api(`/character_contexts/${current.context_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(changes),
+    });
+    current = updated;
+    toast("已儲存：" + Object.keys(changes).join(", "), "ok");
+    renderDetail();
+    loadList();
+  } catch (e) { toast("儲存失敗：" + e.message, "err"); }
+}
+
+function newContext() {
+  const cid = charId();
+  if (!cid) { toast("請先選擇角色", "err"); return; }
+  const charLabel = document.getElementById("charSelect").selectedOptions[0].textContent;
+  activeId = null; current = null;
+  document.querySelectorAll("#list .row").forEach(r => r.classList.remove("active"));
+  const d = document.getElementById("detail");
+  d.innerHTML = `
+    <div class="ro">新增 context · character ${escapeHtml(charLabel)}</div>
+    <form id="createForm" onsubmit="return false">
+      <div class="inline">
+        <div>
+          <label>title（選填）</label>
+          <input type="text" name="title" value="">
+        </div>
+        <div>
+          <label>context_type ＊</label>
+          <input type="text" name="context_type" value="" placeholder="relationship / timeline / scenario ...">
+        </div>
+      </div>
+      <div class="inline">
+        <div>
+          <label>sort_order</label>
+          <input type="number" name="sort_order" value="0">
+        </div>
+        <div style="flex:1"></div>
+      </div>
+      <label>context_content ＊ <span class="cc-count" id="ccCount"></span></label>
+      <textarea name="context_content" placeholder="必填" oninput="updateCount(this)"></textarea>
+      <div class="actions">
+        <button type="button" class="act primary" onclick="create()">建立</button>
+        <button type="button" class="act ghost" onclick="cancelCreate()">取消</button>
+      </div>
+    </form>`;
+  updateCount(d.querySelector("[name=context_content]"));
+}
+
+function cancelCreate() {
+  document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
+}
+
+async function create() {
+  const cid = Number(charId());
+  const f = document.getElementById("createForm");
+  const type = f.context_type.value.trim();
+  const content = f.context_content.value.trim();
+  if (!type) { toast("context_type 必填", "err"); return; }
+  if (!content) { toast("context_content 必填", "err"); return; }
+  const body = { character_id: cid, context_type: type, context_content: content, sort_order: Number(f.sort_order.value) || 0 };
+  const title = f.title.value.trim();
+  if (title) body.title = title;
+  try {
+    const created = await api("/character_contexts/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    toast("已建立 #" + created.context_id, "ok");
+    activeId = created.context_id;
+    await loadList();
+    loadDetail(created.context_id);
+  } catch (e) { toast("建立失敗：" + e.message, "err"); }
+}
+
+function updateCount(el) {
+  const span = document.getElementById("ccCount");
+  if (span && el) span.textContent = el.value.length + " 字";
+}
+
+// ========== Logs tab ==========
+async function importLog() {
+  const cid = charId();
+  if (!cid) { toast("請先選擇角色", "err"); return; }
+  const fileInput = document.getElementById("logFile");
+  if (!fileInput.files.length) { toast("請先選檔案", "err"); return; }
+  const user = document.getElementById("userName").value.trim() || "admin";
+  const fd = new FormData();
+  fd.append("file", fileInput.files[0]);
+  const out = document.getElementById("importResult");
+  out.textContent = "匯入中…";
+  try {
+    const r = await api(`/novel_logs/import?character_id=${cid}&user_name=${encodeURIComponent(user)}`, {
+      method: "POST", body: fd,
+    });
+    out.textContent = `匯入 ${r.import_cnt} 筆`;
+    toast(`匯入成功：${r.import_cnt} 筆`, "ok");
+  } catch (e) { out.textContent = ""; toast("匯入失敗：" + e.message, "err"); }
+}
+
+async function queryLogs() {
+  const cid = charId();
+  if (!cid) { toast("請先選擇角色", "err"); return; }
+  const qs = new URLSearchParams({ character_id: cid });
+  const s = dtValue("logStart");
+  const e = dtValue("logEnd");
+  if (s) qs.set("range_start", s);
+  if (e) qs.set("range_end", e);
+  try {
+    const logs = await api(`/novel_logs/?${qs.toString()}`);
+    document.getElementById("logCount").textContent = `${logs.length} 筆`;
+    renderLogTable(logs);
+  } catch (err) { toast("查詢失敗：" + err.message, "err"); }
+}
+
+function renderLogTable(logs) {
+  const box = document.getElementById("logTable");
+  if (!logs.length) { box.innerHTML = "<div class='empty'>無資料</div>"; return; }
+  let html = `<table><thead><tr>
+    <th>id</th><th>raw_log_time</th><th>sender</th><th>content</th>
+    <th>page</th><th>story_date</th><th>story_time</th><th>location</th><th>spinoff</th>
+  </tr></thead><tbody>`;
+  for (const l of logs) {
+    html += `<tr>
+      <td>${l.novel_log_id}</td>
+      <td>${fmt(l.raw_log_time)}</td>
+      <td>${escapeHtml(l.sender)}</td>
+      <td class="content">${escapeHtml(l.content || "")}</td>
+      <td>${escapeHtml(l.page || "")}</td>
+      <td>${escapeHtml(l.story_date || "")}</td>
+      <td>${escapeHtml(l.story_time || "")}</td>
+      <td>${escapeHtml(l.raw_location || "")}</td>
+      <td>${l.is_spinoff ? "<span class='spin'>✔</span>" : ""}</td>
+    </tr>`;
+  }
+  html += "</tbody></table>";
+  box.innerHTML = html;
+}
+
+// ========== Runs tab ==========
+async function loadRuns() {
+  const cid = charId();
+  const box = document.getElementById("runTable");
+  if (!cid) { box.innerHTML = "<div class='empty'>請先選擇角色</div>"; return; }
+  try {
+    const runs = await api(`/runs/?character_id=${cid}`);
+    if (!runs.length) { box.innerHTML = "<div class='empty'>此角色尚無 run</div>"; return; }
+    let html = `<table><thead><tr>
+      <th>run_id</th><th>range_type</th><th>range_start</th><th>range_end</th>
+      <th>exec_cnt</th><th>建立時間</th><th>動作</th>
+    </tr></thead><tbody>`;
+    for (const r of runs) {
+      html += `<tr>
+        <td>${r.run_id}</td>
+        <td>${r.range_type}</td>
+        <td>${escapeHtml(r.range_start)}</td>
+        <td>${escapeHtml(r.range_end)}</td>
+        <td>${r.exec_cnt}</td>
+        <td>${fmt(r.created_at)}</td>
+        <td style="white-space:nowrap">
+          <button class="act small ghost" onclick="previewRun(${r.run_id})">preview</button>
+          <button class="act small danger" onclick="executeRun(${r.run_id})">execute</button>
+          <button class="act small ghost" onclick="viewExec(${r.run_id})">結果</button>
+        </td>
+      </tr>`;
+    }
+    html += "</tbody></table>";
+    box.innerHTML = html;
+  } catch (e) { box.innerHTML = ""; toast("載入 run 失敗：" + e.message, "err"); }
+}
+
+async function createRun() {
+  const cid = Number(charId());
+  if (!cid) { toast("請先選擇角色", "err"); return; }
+  const start = dtValue("runStart");
+  const end = dtValue("runEnd");
+  if (!start || !end) { toast("range_start / range_end 必填", "err"); return; }
+  const body = {
+    character_id: cid,
+    range_type: Number(document.getElementById("runType").value),
+    range_start: start,
+    range_end: end,
+  };
+  try {
+    const run = await api("/runs/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    toast("已建立 run #" + run.run_id, "ok");
+    loadRuns();
+  } catch (e) { toast("建立 run 失敗：" + e.message, "err"); }
+}
+
+async function previewRun(id) {
+  const out = document.getElementById("runResult");
+  out.innerHTML = `<div class="muted">run #${id} preview 執行中…</div>`;
+  try {
+    const r = await api(`/runs/${id}/preview`, { method: "POST" });
+    let html = `<div class="ro">run #${id} · preview · timestamp ${escapeHtml(r.timestamp)} · 不打 AI、不入庫</div>`;
+    html += "<div class='muted'>產生的 debug 檔（後端磁碟路徑）：</div><pre class='exec'>" +
+      (r.files || []).map(escapeHtml).join("\n") + "</pre>";
+    out.innerHTML = html;
+    toast("preview 完成", "ok");
+  } catch (e) { out.innerHTML = ""; toast("preview 失敗：" + e.message, "err"); }
+}
+
+async function executeRun(id) {
+  if (!confirm(`確定要 execute run #${id}？\n這會實際呼叫 Gemini（產生 API 費用）並將結果寫入資料庫。`)) return;
+  const out = document.getElementById("runResult");
+  out.innerHTML = `<div class="muted">run #${id} execute 執行中…（呼叫 AI，可能需要一段時間）</div>`;
+  try {
+    const r = await api(`/runs/${id}/execute`, { method: "POST" });
+    toast(`execute 完成：寫入 ${r.insert_cnt} 筆`, "ok");
+    await viewExec(id);
+    loadRuns();
+  } catch (e) { out.innerHTML = ""; toast("execute 失敗：" + e.message, "err"); }
+}
+
+async function viewExec(id) {
+  const out = document.getElementById("runResult");
+  out.innerHTML = `<div class="muted">載入 run #${id} 結果…</div>`;
+  try {
+    const execs = await api(`/runs/${id}/execution`);
+    if (!execs.length) { out.innerHTML = `<div class="empty">run #${id} 尚無 execution 結果</div>`; return; }
+    let html = `<div class="ro">run #${id} · ${execs.length} 筆 execution</div>`;
+    for (const ex of execs) {
+      html += `<div style="margin-bottom:14px;">
+        <div><span class="code-${escapeAttr(ex.result_code || "")}">${escapeHtml(ex.result_code || "-")}</span>
+          <span class="muted"> · exec #${ex.prompt_exec_id} · ${fmt(ex.start_time)} → ${fmt(ex.end_time)}</span></div>
+        <pre class="exec">${escapeHtml(ex.result_content || "(無內容)")}</pre>
+      </div>`;
+    }
+    out.innerHTML = html;
+  } catch (e) { out.innerHTML = ""; toast("載入結果失敗：" + e.message, "err"); }
+}
+
+// ---------- utils ----------
+function fmt(s) { return s ? String(s).replace("T", " ").slice(0, 19) : "-"; }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m]));
+}
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
+}
+
+// ---------- datetime text fields ----------
+// 這幾個時間欄位改用純文字輸入（可自由貼上），送出前正規化成 YYYY-MM-DDTHH:mm:ss。
+// 容忍分隔符差異，時間部分可省略（補 00）。
+function normalizeDateTime(raw) {
+  const m = String(raw).trim().match(
+    /(\d{4})\D+(\d{1,2})\D+(\d{1,2})(?:\D+(\d{1,2})\D+(\d{1,2})(?:\D+(\d{1,2}))?)?/);
+  if (!m) return null;
+  const p = (n) => String(n ?? 0).padStart(2, "0");
+  return `${m[1]}-${p(m[2])}-${p(m[3])}T${p(m[4])}:${p(m[5])}:${p(m[6])}`;
+}
+// 讀欄位值：能解析就回正規化格式，空字串照舊回空，無法解析回原字串（讓後端擋）
+function dtValue(id) {
+  const raw = document.getElementById(id).value.trim();
+  if (!raw) return "";
+  return normalizeDateTime(raw) || raw;
+}
+// 失焦時就地整理，給使用者即時回饋
+["logStart", "logEnd", "runStart", "runEnd"].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("change", () => {
+    const norm = normalizeDateTime(el.value);
+    if (norm) el.value = norm;
+  });
+});
+
+document.getElementById("charSelect").onchange = onCharChange;
+loadCharacters();
+</script>
+</body>
+</html>
