@@ -25,11 +25,6 @@ class NovelLog(Base):
     raw_log_time = Column(DateTime, nullable=False)
     sender = Column(String, nullable=False)
     content = Column(String)
-    page = Column(String)
-    story_date = Column(String)
-    story_time = Column(String)
-    raw_location = Column(String)
-    is_spinoff = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.now)
 
 

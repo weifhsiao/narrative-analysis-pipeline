@@ -19,11 +19,6 @@ class NovelLogResponse(BaseModel):
     raw_log_time: datetime
     sender: str
     content: str
-    page: str | None = None
-    story_date: str | None = None
-    story_time: str | None = None
-    raw_location: str | None = None
-    is_spinoff: bool
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)  # 讓 Pydantic 讀 ORM 物件

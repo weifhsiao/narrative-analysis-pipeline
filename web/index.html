@@ -73,7 +73,6 @@
   th, td { border: 1px solid #e3e3e3; padding: 5px 8px; text-align: left; vertical-align: top; }
   th { background: #f6f6f6; position: sticky; top: 0; }
   td.content { max-width: 480px; white-space: pre-wrap; word-break: break-word; }
-  .spin { color: #a60; }
   pre.exec { background: #f7f7f9; border: 1px solid #e3e3e3; border-radius: 4px; padding: 10px; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow-y: auto; font-size: 12px; }
   .code-SUCCESS { color: #197a3a; font-weight: 600; }
   .code-PREVIEW { color: #666; font-weight: 600; }
@@ -454,7 +453,6 @@ function renderLogTable(logs) {
   if (!logs.length) { box.innerHTML = "<div class='empty'>無資料</div>"; return; }
   let html = `<table><thead><tr>
     <th>id</th><th>raw_log_time</th><th>sender</th><th>content</th>
-    <th>page</th><th>story_date</th><th>story_time</th><th>location</th><th>spinoff</th>
   </tr></thead><tbody>`;
   for (const l of logs) {
     html += `<tr>
@@ -462,11 +460,6 @@ function renderLogTable(logs) {
       <td>${fmt(l.raw_log_time)}</td>
       <td>${escapeHtml(l.sender)}</td>
       <td class="content">${escapeHtml(l.content || "")}</td>
-      <td>${escapeHtml(l.page || "")}</td>
-      <td>${escapeHtml(l.story_date || "")}</td>
-      <td>${escapeHtml(l.story_time || "")}</td>
-      <td>${escapeHtml(l.raw_location || "")}</td>
-      <td>${l.is_spinoff ? "<span class='spin'>✔</span>" : ""}</td>
     </tr>`;
   }
   html += "</tbody></table>";

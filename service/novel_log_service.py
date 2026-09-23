@@ -3,7 +3,6 @@ from util.parse_log_util import (
     is_new_turn_header,
     build_novel_logs,
     parse_log_header_line,
-    parse_log_to_dict,
 )
 from sqlalchemy.orm import Session
 from util.db_util import SessionLocal
@@ -17,14 +16,6 @@ def parse_and_import(
 
     print(f"log_parser start. character_id:[{character_id}]")
 
-    # 前一情景狀態
-    current_state = {
-        "page": None,
-        "story_date": None,
-        "story_time": None,
-        "raw_location": None,
-        "is_spinoff": False,
-    }
     ## user發話(prompt)的狀態通常在下一個角色回覆的狀態欄，先放入暫存區直到讀到下一個狀態欄
     user_content_list = []
 
@@ -51,9 +42,7 @@ def parse_and_import(
             if block["sender"] is not None:
                 # 先把前一個block儲存清空
                 novel_log_batch_insert_list.extend(
-                    build_novel_logs(
-                        character_id, block, current_state, user_content_list
-                    )
+                    build_novel_logs(character_id, block, user_content_list)
                 )
                 block = {"raw_log_time": None, "sender": None, "content": []}
                 user_content_list = []
@@ -74,29 +63,12 @@ def parse_and_import(
                 # 角色header
                 is_user_turn = False
 
-                if "#" in remaining_content or "番外" in remaining_content:
-                    current_state["is_spinoff"] = True
-
-            # 若為第一行但沒有"|" -> v1 狀態欄，塞log日期(用in效能比較好)
-            if "|" in clean_line or "｜" in clean_line:
-                # 有狀態欄，送parser 更新到current state
-                parsed_dict = parse_log_to_dict(remaining_content, "2025")
-                current_state["page"] = parsed_dict["page"]
-                current_state["story_date"] = parsed_dict["story_date"]
-                current_state["story_time"] = parsed_dict["story_time"]
-                current_state["raw_location"] = parsed_dict["raw_location"]
-                current_state["is_spinoff"] = parsed_dict.get(
-                    "is_spinoff", current_state["is_spinoff"]
-                )
-                block["raw_log_time"] = raw_time
-                block["sender"] = sender
-                block["content"].append(remaining_content)
-                continue
-            else:
-                block["raw_log_time"] = raw_time
-                block["sender"] = sender
-                block["content"].append(remaining_content)
-                continue
+            # 狀態欄(|page.671|2/9|晨|地點| 這種)仍原封留在 content 文字裡,
+            # 不再拆成欄位,LLM 分析直接讀 content。
+            block["raw_log_time"] = raw_time
+            block["sender"] = sender
+            block["content"].append(remaining_content)
+            continue
         else:
             # 第一個 turn header 之前的行皆為匯出表頭，略過不併入任何 block
             if not seen_first_header:
@@ -110,7 +82,7 @@ def parse_and_import(
 
     # 最後一圈直接轉換
     novel_log_batch_insert_list.extend(
-        build_novel_logs(character_id, block, current_state, user_content_list)
+        build_novel_logs(character_id, block, user_content_list)
     )
 
     import_cnt = insert_novel_logs(db, novel_log_batch_insert_list)
@@ -126,10 +98,9 @@ def assemble_dialogue(
     db: Session,
     range_start: datetime | str | None = None,
     range_end: datetime | str | None = None,
-) -> tuple[str, str]:
+) -> str:
     novel_logs = get_novel_logs(db, character_id, range_start, range_end)
     dialogue_list = []
-    final_page = None
 
     for log in novel_logs:
         log_content = log.content.strip() if log.content else ""
@@ -137,11 +108,7 @@ def assemble_dialogue(
         if log_content:
             dialogue_list.append(log_content)
 
-        page = log.page.strip() if log.page else None
-        if page:
-            final_page = page
-
-    return "\n\n".join(dialogue_list), final_page
+    return "\n\n".join(dialogue_list)
 
 
 # 腳本執行->讀檔
@@ -151,7 +118,7 @@ if __name__ == "__main__":
     source_file_name = "sample_log.txt"
 
     user_name = "沈曉棠"
-    character_id = 1 
+    character_id = 1
 
     with open(f"{source_dir}/{source_file_name}", "r", encoding="utf-8") as f_in:
         print(f"log_parser start. file:[{source_dir}/{source_file_name}]")

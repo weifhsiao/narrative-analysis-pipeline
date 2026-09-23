@@ -99,9 +99,7 @@ def run_pipeline(
     results = []
 
     # load parameter file
-    log_content, final_page = assemble_dialogue(
-        character_id, db, range_start, range_end
-    )
+    log_content = assemble_dialogue(character_id, db, range_start, range_end)
     current_relationship_status = load_context(db, character_id, "relationship")
     scenarios = load_context(db, character_id, "scenario")
     existing_timeline = load_context(db, character_id, "timeline")
@@ -129,7 +127,6 @@ def run_pipeline(
     #         timestamp,
     #         preview=preview,
     #         attachments=log_attachments,
-    #         page_num=final_page,
     #         log_content=log_kwarg,
     #     )
     # )
