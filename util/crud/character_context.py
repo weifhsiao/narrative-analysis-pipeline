@@ -23,6 +23,21 @@ def get_contexts_by_character(db: Session, character_id: int) -> list[CharacterC
     return db.execute(stmt).scalars().all()
 
 
+def get_active_contexts_by_type(
+    db: Session, character_id: int, context_type: str
+) -> list[CharacterContext]:
+    stmt = (
+        select(CharacterContext)
+        .where(
+            CharacterContext.character_id == character_id,
+            CharacterContext.context_type == context_type,
+            CharacterContext.is_active.is_(True),
+        )
+        .order_by(CharacterContext.sort_order, CharacterContext.context_id)
+    )
+    return db.execute(stmt).scalars().all()
+
+
 def update_context(
     db: Session, context_id: int, changes: dict
 ) -> CharacterContext | None:
