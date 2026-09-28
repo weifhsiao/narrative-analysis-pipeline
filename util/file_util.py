@@ -18,27 +18,6 @@ def load_prompt(name: str, **kwargs) -> tuple[str, str]:
     return system, prompt.format(**kwargs)
 
 
-def load_character_content(character: str, name: str):
-    path = BASE_DIR / "data" / character / f"{name}.txt"
-    if not path.exists():
-        return ""
-
-    return path.read_text(encoding="utf-8").strip()
-
-
-def load_all_scenarios(character: str):
-    scenario_dir = BASE_DIR / "data" / character / "scenarios"
-
-    if not scenario_dir.exists():
-        return ""
-
-    contents = []
-    for file in sorted(scenario_dir.glob("*.txt")):
-        contents.append(file.read_text(encoding="utf-8"))
-
-    return "\n\n".join(contents)
-
-
 def write_debug_file(content: str, timestamp: str, name: str = "prompt_log") -> Path:
     path = BASE_DIR / "data" / "debug_log" / f"{timestamp}" / f"{name}.log"
     # 路徑不存在就新建

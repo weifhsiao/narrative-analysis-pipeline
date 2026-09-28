@@ -2,8 +2,6 @@ import os
 import time
 from datetime import datetime
 from util.file_util import (
-    load_character_content,
-    load_all_scenarios,
     load_prompt,
     write_debug_file,
     write_response,
