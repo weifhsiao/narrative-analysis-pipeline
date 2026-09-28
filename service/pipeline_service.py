@@ -17,7 +17,7 @@ def _run_prompt(
     prompt_name: str,
     timestamp: str,
     db: Session,
-    character_id: str,
+    character_id: int,
     run_params: dict[str, str],
     preview: bool = False,
     attachments: list[Attachment] | None = None,
@@ -85,7 +85,7 @@ def _to_prompt_execution(result: dict, run_id: int) -> PromptExecution:
 def run_pipeline(
     db: Session,
     run_id: int,
-    character_id: str,
+    character_id: int,
     range_start: datetime | str | None = None,
     range_end: datetime | str | None = None,
     preview: bool = False,
@@ -99,7 +99,7 @@ def run_pipeline(
 
     # preflight lint:只看這次會跑的 prompt;ERROR 中止(不組 prompt、不打 AI),WARN 印出繼續
     issues = [
-        i for i in lint_prompts(db, int(character_id)) if i.prompt in PIPELINE_PROMPTS
+        i for i in lint_prompts(db, character_id) if i.prompt in PIPELINE_PROMPTS
     ]
     for i in issues:
         print(f"[run_pipeline] lint {i.level} | {i.prompt} | {i.message}")

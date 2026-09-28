@@ -51,7 +51,7 @@ def execute(run_id: int, db: Session = Depends(get_db)):
     range_start = run.range_start
     range_end = run.range_end
     try:
-        insert_cnt = run_pipeline(db, run_id, f"{character_id}", range_start, range_end)
+        insert_cnt = run_pipeline(db, run_id, character_id, range_start, range_end)
     except PromptLintError as e:
         raise _lint_failed(e)
 
@@ -70,7 +70,7 @@ def preview(run_id: int, db: Session = Depends(get_db)):
         return run_pipeline(
             db,
             run_id,
-            f"{run.character_id}",
+            run.character_id,
             run.range_start,
             run.range_end,
             preview=True,
