@@ -60,7 +60,7 @@ def execute(run_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{run_id}/preview")
 def preview(run_id: int, db: Session = Depends(get_db)):
-    # 只組 prompt 並寫出 debug 檔，不打 AI、不入庫
+    # 只組 prompt 並回傳實際會送出的內容，不打 AI、不寫檔、不入庫
     run = get_run(db, run_id)
 
     if run is None:

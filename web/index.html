@@ -531,9 +531,19 @@ async function previewRun(id) {
   out.innerHTML = `<div class="muted">run #${id} preview 執行中…</div>`;
   try {
     const r = await api(`/runs/${id}/preview`, { method: "POST" });
-    let html = `<div class="ro">run #${id} · preview · timestamp ${escapeHtml(r.timestamp)} · 不打 AI、不入庫</div>`;
-    html += "<div class='muted'>產生的 debug 檔（後端磁碟路徑）：</div><pre class='exec'>" +
-      (r.files || []).map(escapeHtml).join("\n") + "</pre>";
+    let html = `<div class="ro">run #${id} · preview · 不打 AI、不入庫（以下為實際會送出的內容）</div>`;
+    for (const p of r.prompts || []) {
+      html += `<div style="margin-bottom:14px;">
+        <div><b>${escapeHtml(p.prompt_name)}</b><span class="muted"> · prompt_id ${p.prompt_id ?? "-"}</span></div>`;
+      if (p.error) {
+        html += `<pre class="exec">${escapeHtml(p.error)}</pre></div>`;
+        continue;
+      }
+      if (p.attachments.length) html += `<div class="muted">夾檔：${p.attachments.map(escapeHtml).join("、")}</div>`;
+      html += `<div class="muted">system instruction</div><pre class="exec">${escapeHtml(p.system || "(無)")}</pre>
+        <div class="muted">prompt</div><pre class="exec">${escapeHtml(p.prompt || "(無)")}</pre>
+      </div>`;
+    }
     out.innerHTML = html;
     toast("preview 完成", "ok");
   } catch (e) { out.innerHTML = ""; toast("preview 失敗：" + e.message, "err"); }
@@ -562,6 +572,7 @@ async function viewExec(id) {
       html += `<div style="margin-bottom:14px;">
         <div><span class="code-${escapeAttr(ex.result_code || "")}">${escapeHtml(ex.result_code || "-")}</span>
           <span class="muted"> · exec #${ex.prompt_exec_id} · ${fmt(ex.start_time)} → ${fmt(ex.end_time)}</span></div>
+        ${ex.model ? `<div class="muted">${escapeHtml(ex.model)} · tokens in ${ex.input_tokens ?? "-"} / out ${ex.output_tokens ?? "-"}（思考 ${ex.thinking_tokens ?? "-"}）</div>` : ""}
         <pre class="exec">${escapeHtml(ex.result_content || "(無內容)")}</pre>
       </div>`;
     }
