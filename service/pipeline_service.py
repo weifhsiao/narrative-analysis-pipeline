@@ -1,16 +1,13 @@
 import os
 import time
 from datetime import datetime
-from util.file_util import (
-    load_prompt,
-    write_debug_file,
-    write_response,
-)
+from util.file_util import write_debug_file, write_response
 from util.ai_client import get_client, Attachment, AIBlockedError
 from util.models import PromptExecution
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
 from service.novel_log_service import assemble_dialogue
+from service.prompt_service import load_prompt
 
 
 def _run_prompt(
