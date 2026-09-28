@@ -9,7 +9,7 @@
 精煉敘述事件經過與結果（保留關鍵細節，不因格式壓縮內容）
 → 這個事件之後，兩人的互動模式或關係產生了什麼實質改變
 
-日期跨多天時寫法：[YYYY-MM-DD至YYYY-MM-DD|級別|頁碼]
+日期跨多天時寫法：[第n日至第n日|級別|頁碼]
 
 ## 級別定義（以對後續互動行為的實質影響為準）
 S = 雙方互動結構發生根本性轉變
@@ -32,16 +32,13 @@ D = 日常互動／背景資訊
 - 事件描述以兩至四句為限，保留關鍵行為與結果，省略過程細節
 
 ## 背景資料
-    <background_context>
-    {background_context}
-    </background_context>
+    <relationship>
+    </relationship>
 
 ## 現有時間軸（僅供參考，請勿重複）
-    <existing_timeline>
-    {existing_timeline}
-    </existing_timeline>
+    <timeline>
+    </timeline>
 ---
 以下是新劇情內容：
     <log_content>
-    {log_content}
     </log_content>

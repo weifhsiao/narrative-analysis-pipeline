@@ -6,13 +6,17 @@
 
 【背景資料】
     以下是本作的角色關係與背景資料（包含歷史劇情、專屬信物與當前關係狀態）。請務必以此作為唯一的行為解讀基準，嚴禁擅自套用一般言情小說或通俗劇劇情的刻板套路：
-    <background_context>
-    {background_context}
-    </background_context>
+
+    【當前關係狀態】
+    <relationship>
+    </relationship>
+
+    【歷史劇情（發生過的劇情）】
+    <scenario>
+    </scenario>
 
 【最新劇情內容】
     <log_content>
-    {log_content}
     </log_content>
 
 【任務】
