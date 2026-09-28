@@ -1,13 +1,25 @@
 import re
+from collections import Counter
+from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
 from util.file_util import BASE_DIR
-from util.crud.character_context import list_context_types
+from util.models import CONTEXT_TYPE_PATTERN
+from util.crud.character_context import get_active_contexts_by_type, list_context_types
 from service.character_context_service import load_context
 
 # 開閉標籤：<tag>...</tag>（tag 名為 \w，含中文）；.*? 跨行非貪婪
 _TAG_RE = re.compile(r"<(\w+)>.*?</\1>", re.DOTALL)
+
+# run 參數名：pipeline 傳進 load_prompt 的 run_params key 必須在這裡，lint 靠它判斷
+RUN_PARAM_NAMES = frozenset({"log_content"})
+
+# lint 用：開/閉標籤分開抓（才抓得到不成對）、舊式 {name} 佔位、填空標籤名的字元規則
+_OPEN_RE = re.compile(r"<(\w+)>")
+_CLOSE_RE = re.compile(r"</(\w+)>")
+_PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
+_SLOT_RE = re.compile(CONTEXT_TYPE_PATTERN)
 
 
 def _fill_tags(
@@ -63,3 +75,61 @@ def load_prompt(
     prompt = _fill_tags(prompt, db, character_id, run_params, context_types)
 
     return system, prompt
+
+
+@dataclass
+class LintIssue:
+    level: str  # ERROR / WARN / INFO
+    prompt: str | None  # prompt 檔名(不含 .txt);全域性問題為 None
+    message: str
+
+
+def lint_prompts(db: Session, character_id: int | None = None) -> list[LintIssue]:
+    """掃 prompts/*.txt 的填空標籤，列出跑 pipeline 之前就能發現的問題。
+
+    填空標籤 = 名字符合 CONTEXT_TYPE_PATTERN 的 <T>;其他(中文)視為結構標籤,略過。
+    ERROR:填空標籤開閉不成對,或既不是 run 參數也不是 DB 既有的 context_type(多半打錯字)。
+    WARN :殘留 {name} 舊佔位(新引擎不會填);指定角色時,該角色缺某個會用到的 type(會填空)。
+    INFO :DB 有資料、但沒有任何 prompt 用到的 context_type。
+    """
+    context_types = list_context_types(db)
+    known = RUN_PARAM_NAMES | context_types
+    issues: list[LintIssue] = []
+    used_types: set[str] = set()
+
+    for path in sorted((BASE_DIR / "prompts").glob("*.txt")):
+        name = path.stem
+        text = path.read_text(encoding="utf-8")
+
+        opens = Counter(t for t in _OPEN_RE.findall(text) if _SLOT_RE.fullmatch(t))
+        closes = Counter(t for t in _CLOSE_RE.findall(text) if _SLOT_RE.fullmatch(t))
+
+        for tag in sorted(opens.keys() | closes.keys()):
+            if opens[tag] != closes[tag]:
+                issues.append(LintIssue(
+                    "ERROR", name,
+                    f"<{tag}> 開閉不成對(開 {opens[tag]}、閉 {closes[tag]}),引擎不會填",
+                ))
+                continue
+            if tag in RUN_PARAM_NAMES:
+                continue
+            if tag not in context_types:
+                issues.append(LintIssue(
+                    "ERROR", name,
+                    f"<{tag}> 不是 run 參數,也不是 DB 既有的 context_type(打錯字或 type 不存在)",
+                ))
+                continue
+            used_types.add(tag)
+            if character_id is not None and not get_active_contexts_by_type(db, character_id, tag):
+                issues.append(LintIssue(
+                    "WARN", name,
+                    f"角色 {character_id} 沒有 active 的 {tag},跑的時候 <{tag}> 會填空",
+                ))
+
+        for ph in sorted(set(_PLACEHOLDER_RE.findall(text)) & known):
+            issues.append(LintIssue("WARN", name, f"殘留舊佔位 {{{ph}}},新引擎不會填入"))
+
+    for t in sorted(context_types - used_types):
+        issues.append(LintIssue("INFO", None, f"context_type「{t}」DB 有資料,但沒有任何 prompt 用到"))
+
+    return issues

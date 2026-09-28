@@ -1,5 +1,7 @@
+import re
 from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
+from util.models import CONTEXT_TYPE_PATTERN
 
 
 class CharacterCreate(BaseModel):
@@ -62,6 +64,14 @@ class ContextModify(BaseModel):
     @classmethod
     def _strip(cls, v):
         return v.strip() if isinstance(v, str) else v
+
+    # charset:定義在 _strip 之後,先 trim 再檢查(None = PATCH 沒送,不檢查)
+    @field_validator("context_type", check_fields=False)
+    @classmethod
+    def _check_context_type(cls, v):
+        if v is not None and not re.fullmatch(CONTEXT_TYPE_PATTERN, v):
+            raise ValueError("context_type 只能用小寫英文、數字、底線 [a-z0-9_]")
+        return v
 
 
 class ContextCreate(ContextModify):
