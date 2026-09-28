@@ -1,3 +1,4 @@
 -r requirements.txt
 pytest==9.1.1
-httpx==0.28.1
+# TestClient 用 httpx2(starlette 已棄用 httpx);httpx 仍由 google-genai 帶入
+httpx2==2.13.1

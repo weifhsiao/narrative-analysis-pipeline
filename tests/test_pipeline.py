@@ -3,15 +3,21 @@ import pytest
 from sqlalchemy import select
 
 from service.pipeline_service import PIPELINE_PROMPTS, run_pipeline
-from service.prompt_service import PromptLintError
+from service.prompt_service import PromptLintError, lint_prompts
 from util.ai_client import AIBlockedError
 from util.models import PromptExecution
 from tests.helpers import add_character, add_context, add_log, add_run, write_prompt
 
 START, END = "2026-01-01 00:00:00", "2026-01-31 23:59:59"
 
-GOOD_PROMPT = """# system instruction
-你是整理助手。
+# 範圍內的 log 依時間 join 後應得的內容（含剛好落在 END 的那筆）
+IN_RANGE_LOG = "第一句劇情\n\n月底最後一秒"
+
+
+def good_prompt(name: str) -> str:
+    """各支 system 不同，才驗得到「每支 prompt 載入的是自己」。"""
+    return f"""# system instruction
+你是 {name} 助手。
 
 # prompt
 <relationship>
@@ -26,10 +32,12 @@ def setup(db, prompts_dir):
     """一個有 log、有 relationship、三支 pipeline prompt 都乾淨的角色。"""
     cid = add_character(db)
     add_context(db, cid, "relationship", "REL_CONTENT")
+    add_log(db, cid, "範圍前的劇情", "2025-12-31 23:59:59")
     add_log(db, cid, "第一句劇情", "2026-01-02 10:00:00")
-    add_log(db, cid, "範圍外的劇情", "2026-02-02 10:00:00")
+    add_log(db, cid, "月底最後一秒", END)  # 邊界：字串邊界直接比會漏掉，要靠 _coerce_dt
+    add_log(db, cid, "範圍後的劇情", "2026-02-01 00:00:00")
     for name in PIPELINE_PROMPTS:
-        write_prompt(prompts_dir, name, GOOD_PROMPT)
+        write_prompt(prompts_dir, name, good_prompt(name))
     return cid
 
 
@@ -65,7 +73,8 @@ def test_lint_warn_does_not_abort(db, prompts_dir, fake_ai):
     other = add_character(db, "別人")
     add_context(db, other, "relationship", "只有別人有")  # type 存在，但 cid 沒有 → WARN
     for name in PIPELINE_PROMPTS:
-        write_prompt(prompts_dir, name, GOOD_PROMPT)
+        write_prompt(prompts_dir, name, good_prompt(name))
+    assert any(i.level == "WARN" for i in lint_prompts(db, cid))  # 前提：真的有 WARN
 
     run_pipeline(db, 1, cid, START, END)
 
@@ -82,8 +91,7 @@ def test_preview_writes_rendered_prompts_without_calling_ai(db, setup, fake_ai):
     for path in result["files"]:
         text = open(path, encoding="utf-8").read()
         assert "REL_CONTENT" in text
-        assert "第一句劇情" in text
-        assert "範圍外的劇情" not in text
+        assert f"<log_content>\n{IN_RANGE_LOG}\n</log_content>" in text
     assert fake_ai.calls == []
     assert _executions(db) == []
 
@@ -95,10 +103,10 @@ def test_execute_sends_filled_prompt_and_records_success(db, setup, fake_ai):
     insert_cnt = run_pipeline(db, 7, setup, START, END)
 
     assert insert_cnt == len(PIPELINE_PROMPTS)
+    assert [c["system"] for c in fake_ai.calls] == [f"你是 {n} 助手。" for n in PIPELINE_PROMPTS]
     call = fake_ai.calls[0]
-    assert call["system"] == "你是整理助手。"
     assert "<relationship>\nREL_CONTENT\n</relationship>" in call["prompt"]
-    assert "<log_content>\n第一句劇情\n</log_content>" in call["prompt"]
+    assert f"<log_content>\n{IN_RANGE_LOG}\n</log_content>" in call["prompt"]
     assert call["attachments"] is None
     rows = _executions(db)
     assert {r.run_id for r in rows} == {7}
@@ -115,7 +123,7 @@ def test_attachment_mode_sends_log_as_file(db, setup, fake_ai, monkeypatch):
     assert "第一句劇情" not in call["prompt"]
     assert "story_log.txt" in call["prompt"]
     [attachment] = call["attachments"]
-    assert attachment.data.decode("utf-8") == "第一句劇情"
+    assert attachment.data.decode("utf-8") == IN_RANGE_LOG
 
 
 @pytest.mark.parametrize(
@@ -156,7 +164,11 @@ def test_router_preview_ok(client, db, setup, fake_ai):
     res = client.post(f"/runs/{run_id}/preview")
 
     assert res.status_code == 200
-    assert len(res.json()["files"]) == len(PIPELINE_PROMPTS)
+    files = res.json()["files"]
+    assert len(files) == len(PIPELINE_PROMPTS)
+    # range 走 run 表的 String 欄位讀回，邊界那筆仍要撈到
+    text = open(files[0], encoding="utf-8").read()
+    assert f"<log_content>\n{IN_RANGE_LOG}\n</log_content>" in text
     assert fake_ai.calls == []
 
 

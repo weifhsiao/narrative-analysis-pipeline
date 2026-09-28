@@ -155,7 +155,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Tests run against in-memory SQLite and temp directories only: they never touch `data/novel.db` (connecting raises), never write to `data/`, and never call Gemini.
+Tests run against in-memory SQLite and temp directories only: they never connect to `data/novel.db` (the attempt raises before the file is opened), never write any file under `data/`, and never call Gemini.
 
 ## Roadmap
 

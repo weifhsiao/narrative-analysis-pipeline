@@ -18,7 +18,8 @@ from util.ai_client import AIClient, Attachment
 from util.models import Base
 
 
-@event.listens_for(db_util.engine, "connect")
+# do_connect 在 sqlite3.connect() 之前觸發：擋下時連檔案都不會被開啟或建立
+@event.listens_for(db_util.engine, "do_connect")
 def _refuse_real_db(*_):
     raise RuntimeError("測試不得連線真實 DB（data/novel.db），請用 db fixture")
 
@@ -91,7 +92,9 @@ def client(db):
     def _override_get_db():
         yield db
 
+    # 只交出同一個 session，不 commit/rollback，測試才能在同一交易內查到 router 寫的資料；
+    # 真正 get_db 的 commit/rollback 由 test_db_util 另外測
     app.dependency_overrides[db_util.get_db] = _override_get_db
     with TestClient(app) as c:
         yield c
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(db_util.get_db, None)

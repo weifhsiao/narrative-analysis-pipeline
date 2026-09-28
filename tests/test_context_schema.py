@@ -46,6 +46,7 @@ def test_api_rejects_invalid_context_type_with_422(client, db):
     )
 
     assert res.status_code == 422
+    assert [e["loc"][-1] for e in res.json()["detail"]] == ["context_type"]
 
 
 def test_api_accepts_valid_context_type(client, db):

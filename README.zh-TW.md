@@ -155,7 +155,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-測試只用記憶體 SQLite 與暫存目錄：不讀寫 `data/novel.db`(連線會直接報錯)、不寫 `data/`、不呼叫 Gemini。
+測試只用記憶體 SQLite 與暫存目錄：不連線 `data/novel.db`(連線前就會報錯)、不寫入任何檔案到 `data/`、不呼叫 Gemini。
 
 ## Roadmap
 
