@@ -17,7 +17,7 @@ def main():
     parser.add_argument("--character", type=int, default=None, help="加查此角色的 context 覆蓋")
     args = parser.parse_args()
 
-    # engine echo=True 會把 SQL 印滿畫面,lint 輸出要看得到
+    # 就算 .env 開了 SQL_ECHO,lint 報告也要看得到:這支工具固定壓掉 SQL log
     logging.disable(logging.INFO)
 
     db = SessionLocal()
