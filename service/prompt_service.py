@@ -43,7 +43,12 @@ def _fill_tags(
             content = load_context(db, character_id, name)
         else:
             return m.group(0)
-        return f"<{name}>\n{content}\n</{name}>"
+        # 閉標籤對齊開標籤的縮排（開標籤前有其他文字就不縮）；內容原樣不縮排
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        indent = text[line_start : m.start()]
+        if indent.strip():
+            indent = ""
+        return f"<{name}>\n{content}\n{indent}</{name}>"
 
     return _TAG_RE.sub(repl, text)
 
