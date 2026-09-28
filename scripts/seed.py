@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from pathlib import Path
 from sqlalchemy import inspect
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from util.db_util import SessionLocal, engine
 from util.models import Base, Character, CharacterContext, Run, NovelLog, PromptExecution
@@ -190,6 +191,16 @@ def main() -> None:
     db = SessionLocal()
     try:
         foreign = find_foreign_data(db)
+    except OperationalError as e:
+        print("無法讀取 DB 確認有沒有 seed 以外的資料,已中止(未修改任何資料)。")
+        print(f"    原因:{e.orig}")
+        if "locked" in str(e.orig):
+            print("DB 被其他程式鎖住,先關掉正在跑的 API / DB 瀏覽工具再試。")
+        else:
+            # 舊 schema 下 --yes 也沒用:清表會過,但寫入範例時缺欄位會失敗 rollback
+            print("多半是 prompt 版本化之前建立的舊 DB:請先跑 python -m scripts.migrate_prompt_template --write;")
+            print("只是想重建範例,就換一個工作目錄,或移走 data/novel.db 再跑 seed。")
+        sys.exit(1)
     finally:
         db.close()
     if foreign and not args.yes:

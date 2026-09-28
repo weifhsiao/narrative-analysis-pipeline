@@ -4,6 +4,7 @@ DB 有 seed 以外的資料時,沒加 --yes 一律不動。
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 import scripts.seed as seed
 from service.pipeline_service import PIPELINE_PROMPTS
@@ -162,3 +163,21 @@ def test_main_reseeds_seed_only_db_without_yes(db, seed_main):
     seed_main()
 
     assert db.query(CharacterContext).count() == len(seed.SEED_CONTEXTS)
+
+
+def test_main_refuses_old_schema_with_readable_message(db, seed_main, capsys):
+    """prompt 版本化之前的 DB:prompt_execution 缺新欄位,檢查階段就讀不了。"""
+    _seed(db)
+    db.commit()
+    db.execute(text("ALTER TABLE prompt_execution DROP COLUMN system_snapshot"))
+    db.commit()
+    before = db.execute(text("SELECT count(*) FROM character_context")).scalar()
+
+    with pytest.raises(SystemExit) as e:
+        seed_main("--yes")  # --yes 也一樣擋:舊 schema 寫不進範例
+
+    out = capsys.readouterr().out
+    assert e.value.code == 1
+    assert "no such column: prompt_execution.system_snapshot" in out
+    assert "migrate_prompt_template" in out
+    assert db.execute(text("SELECT count(*) FROM character_context")).scalar() == before
