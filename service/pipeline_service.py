@@ -7,7 +7,10 @@ from util.models import PromptExecution
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
 from service.novel_log_service import assemble_dialogue
-from service.prompt_service import load_prompt
+from service.prompt_service import load_prompt, lint_prompts, PromptLintError
+
+# 本 pipeline 會跑的 prompt(recap 停用中)
+PIPELINE_PROMPTS = ("summary", "timeline", "relationship")
 
 
 def _run_prompt(
@@ -94,6 +97,16 @@ def run_pipeline(
     timestamp = str(int(time.time()))
     results = []
 
+    # preflight lint:只看這次會跑的 prompt;ERROR 中止(不組 prompt、不打 AI),WARN 印出繼續
+    issues = [
+        i for i in lint_prompts(db, int(character_id)) if i.prompt in PIPELINE_PROMPTS
+    ]
+    for i in issues:
+        print(f"[run_pipeline] lint {i.level} | {i.prompt} | {i.message}")
+    errors = [i for i in issues if i.level == "ERROR"]
+    if errors:
+        raise PromptLintError(errors)
+
     # load parameter file
     log_content = assemble_dialogue(character_id, db, range_start, range_end)
 
@@ -125,7 +138,7 @@ def run_pipeline(
     #     )
     # )
 
-    for prompt_name in ("summary", "timeline", "relationship"):
+    for prompt_name in PIPELINE_PROMPTS:
         results.append(
             _run_prompt(
                 prompt_name,

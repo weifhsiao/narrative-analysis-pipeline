@@ -84,6 +84,14 @@ class LintIssue:
     message: str
 
 
+class PromptLintError(Exception):
+    """pipeline 開跑前 lint 有 ERROR:標籤對不上,送出去的 prompt 會缺內容,直接中止。"""
+
+    def __init__(self, issues: list[LintIssue]):
+        self.issues = issues
+        super().__init__("; ".join(f"{i.prompt}: {i.message}" for i in issues))
+
+
 def lint_prompts(db: Session, character_id: int | None = None) -> list[LintIssue]:
     """掃 prompts/*.txt 的填空標籤，列出跑 pipeline 之前就能發現的問題。
 
