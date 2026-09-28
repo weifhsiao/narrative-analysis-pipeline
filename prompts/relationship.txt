@@ -4,13 +4,11 @@
 # prompt
 
 【現有關係狀態（待更新）】
-<current_relationship_status>
-{current_relationship_status}
-</current_relationship_status>
+<relationship>
+</relationship>
 
 【最新劇情內容】
     <log_content>
-    {log_content}
     </log_content>
 
 【任務】

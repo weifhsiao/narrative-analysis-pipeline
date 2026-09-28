@@ -6,8 +6,20 @@ from util.crud.run import create_run, get_run, get_runs_by_character
 from util.crud.prompt import get_prompt_executions_by_run
 from util.models import Run
 from service.pipeline_service import run_pipeline
+from service.prompt_service import PromptLintError
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+
+def _lint_failed(e: PromptLintError) -> HTTPException:
+    # prompt 標籤對不上:跑下去送的 prompt 會缺內容,回 422 並列出每條 ERROR
+    return HTTPException(
+        status_code=422,
+        detail={
+            "error": "prompt lint failed",
+            "issues": [{"prompt": i.prompt, "message": i.message} for i in e.issues],
+        },
+    )
 # POST /runs 建立run資料
 # POST /runs/{run_id}/execute 跑pipeline
 # GET  /runs/{run_id} 回傳 run 資料 + 底下所有 prompt_executions
@@ -38,7 +50,10 @@ def execute(run_id: int, db: Session = Depends(get_db)):
     character_id = run.character_id
     range_start = run.range_start
     range_end = run.range_end
-    insert_cnt = run_pipeline(db, run_id, f"{character_id}", range_start, range_end)
+    try:
+        insert_cnt = run_pipeline(db, run_id, character_id, range_start, range_end)
+    except PromptLintError as e:
+        raise _lint_failed(e)
 
     return {"insert_cnt": insert_cnt}
 
@@ -51,14 +66,17 @@ def preview(run_id: int, db: Session = Depends(get_db)):
     if run is None:
         raise HTTPException(status_code=404, detail=f"Run id [{run_id}] not found.")
 
-    return run_pipeline(
-        db,
-        run_id,
-        f"{run.character_id}",
-        run.range_start,
-        run.range_end,
-        preview=True,
-    )
+    try:
+        return run_pipeline(
+            db,
+            run_id,
+            run.character_id,
+            run.range_start,
+            run.range_end,
+            preview=True,
+        )
+    except PromptLintError as e:
+        raise _lint_failed(e)
 
 
 @router.get("/{run_id}", response_model=RunResponse)

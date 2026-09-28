@@ -173,6 +173,9 @@
 
 <script>
 const API = "";
+// 與後端 util/models.CONTEXT_TYPE_PATTERN 同規則(API 也會擋,這裡先在前端提示)
+const CONTEXT_TYPE_RE = /^[a-z0-9_]+$/;
+const CONTEXT_TYPE_MSG = "context_type 只能用小寫英文、數字、底線";
 let current = null;   // context detail 原始值
 let activeId = null;
 let currentTab = "context";
@@ -288,7 +291,7 @@ function renderDetail() {
         </div>
         <div>
           <label>context_type</label>
-          <input type="text" name="context_type" value="${escapeAttr(c.context_type)}">
+          <input type="text" name="context_type" value="${escapeAttr(c.context_type)}" pattern="[a-z0-9_]+">
         </div>
       </div>
       <div class="inline">
@@ -331,6 +334,7 @@ function collectChanges() {
 async function save() {
   const changes = collectChanges();
   if (Object.keys(changes).length === 0) { toast("沒有變更", ""); return; }
+  if ("context_type" in changes && !CONTEXT_TYPE_RE.test(changes.context_type)) { toast(CONTEXT_TYPE_MSG, "err"); return; }
   try {
     const updated = await api(`/character_contexts/${current.context_id}`, {
       method: "PATCH",
@@ -361,7 +365,7 @@ function newContext() {
         </div>
         <div>
           <label>context_type ＊</label>
-          <input type="text" name="context_type" value="" placeholder="relationship / timeline / scenario ...">
+          <input type="text" name="context_type" value="" placeholder="relationship / timeline / scenario ...（小寫英數底線）" pattern="[a-z0-9_]+">
         </div>
       </div>
       <div class="inline">
@@ -391,6 +395,7 @@ async function create() {
   const type = f.context_type.value.trim();
   const content = f.context_content.value.trim();
   if (!type) { toast("context_type 必填", "err"); return; }
+  if (!CONTEXT_TYPE_RE.test(type)) { toast(CONTEXT_TYPE_MSG, "err"); return; }
   if (!content) { toast("context_content 必填", "err"); return; }
   const body = { character_id: cid, context_type: type, context_content: content, sort_order: Number(f.sort_order.value) || 0 };
   const title = f.title.value.trim();

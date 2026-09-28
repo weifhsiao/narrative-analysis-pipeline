@@ -38,6 +38,15 @@ def get_active_contexts_by_type(
     return db.execute(stmt).scalars().all()
 
 
+def list_context_types(db: Session) -> set[str]:
+    """回傳 DB 現有的所有 context_type（去重）。
+
+    供 prompt 引擎判斷某個 <T> 標籤是不是 context 標籤（而非結構標籤）。
+    """
+    stmt = select(CharacterContext.context_type).distinct()
+    return set(db.execute(stmt).scalars().all())
+
+
 def update_context(
     db: Session, context_id: int, changes: dict
 ) -> CharacterContext | None:

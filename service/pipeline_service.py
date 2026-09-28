@@ -1,27 +1,26 @@
 import os
 import time
 from datetime import datetime
-from util.file_util import (
-    load_character_content,
-    load_all_scenarios,
-    load_prompt,
-    write_debug_file,
-    write_response,
-)
+from util.file_util import write_debug_file, write_response
 from util.ai_client import get_client, Attachment, AIBlockedError
 from util.models import PromptExecution
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
 from service.novel_log_service import assemble_dialogue
-from service.character_context_service import load_context
+from service.prompt_service import load_prompt, lint_prompts, PromptLintError
+
+# 本 pipeline 會跑的 prompt(recap 停用中)
+PIPELINE_PROMPTS = ("summary", "timeline", "relationship")
 
 
 def _run_prompt(
     prompt_name: str,
     timestamp: str,
+    db: Session,
+    character_id: int,
+    run_params: dict[str, str],
     preview: bool = False,
     attachments: list[Attachment] | None = None,
-    **kwargs,
 ) -> dict:
     ai_model = os.getenv("GEMINI_MODEL", "UNKNOWN")
     start_time = datetime.now()
@@ -30,7 +29,7 @@ def _run_prompt(
     )
     debug_path = None
     try:
-        system, prompt = load_prompt(f"{prompt_name}", **kwargs)
+        system, prompt = load_prompt(prompt_name, db, character_id, run_params)
         attachment_info = "".join(
             f"\n[attachment] {a.filename or '(unnamed)'} | {a.mime_type} | {len(a.data)} bytes"
             for a in (attachments or [])
@@ -86,7 +85,7 @@ def _to_prompt_execution(result: dict, run_id: int) -> PromptExecution:
 def run_pipeline(
     db: Session,
     run_id: int,
-    character_id: str,
+    character_id: int,
     range_start: datetime | str | None = None,
     range_end: datetime | str | None = None,
     preview: bool = False,
@@ -98,17 +97,24 @@ def run_pipeline(
     timestamp = str(int(time.time()))
     results = []
 
+    # preflight lint:只看這次會跑的 prompt;ERROR 中止(不組 prompt、不打 AI),WARN 印出繼續
+    issues = [
+        i for i in lint_prompts(db, character_id) if i.prompt in PIPELINE_PROMPTS
+    ]
+    for i in issues:
+        print(f"[run_pipeline] lint {i.level} | {i.prompt} | {i.message}")
+    errors = [i for i in issues if i.level == "ERROR"]
+    if errors:
+        raise PromptLintError(errors)
+
     # load parameter file
     log_content = assemble_dialogue(character_id, db, range_start, range_end)
-    current_relationship_status = load_context(db, character_id, "relationship")
-    scenarios = load_context(db, character_id, "scenario")
-    existing_timeline = load_context(db, character_id, "timeline")
 
     # log 輸入模式:inline(純文字內嵌,預設) / attachment(夾檔)
     log_input_mode = os.getenv("LOG_INPUT_MODE", "inline")
     if log_input_mode == "attachment":
-        # placeholder 換成指向附件的提示,真正 log 走附件;4 個 prompt 共用同一個 Attachment
-        log_kwarg = "（完整劇情內容請見附件檔案 story_log.txt）"
+        # placeholder 換成指向附件的提示,真正 log 走附件;各 prompt 共用同一個 Attachment
+        log_text = "（完整劇情內容請見附件檔案 story_log.txt）"
         log_attachments = [
             Attachment(
                 data=log_content.encode("utf-8"),
@@ -117,57 +123,33 @@ def run_pipeline(
             )
         ]
     else:
-        log_kwarg = log_content
+        log_text = log_content
         log_attachments = None
 
-    # short_summary
+    # 背景 context 由各 prompt 的標籤自行宣告,引擎依 character_id 到 DB 撈;
+    # 這裡只帶 run 輸入(劇情)。
+    run_params = {"log_content": log_text}
+
+    # recap 目前停用(頁碼無關版只吃 log_content,重新啟用時併回下方迴圈)
     # results.append(
     #     _run_prompt(
-    #         "recap",
-    #         timestamp,
-    #         preview=preview,
-    #         attachments=log_attachments,
-    #         log_content=log_kwarg,
+    #         "recap", timestamp, db, character_id, run_params,
+    #         preview=preview, attachments=log_attachments,
     #     )
     # )
 
-    # summary
-    background_content = f"{current_relationship_status}\n\n{scenarios}\n\n"
-    results.append(
-        _run_prompt(
-            "summary",
-            timestamp,
-            preview=preview,
-            attachments=log_attachments,
-            log_content=log_kwarg,
-            background_context=background_content,
+    for prompt_name in PIPELINE_PROMPTS:
+        results.append(
+            _run_prompt(
+                prompt_name,
+                timestamp,
+                db,
+                character_id,
+                run_params,
+                preview=preview,
+                attachments=log_attachments,
+            )
         )
-    )
-
-    # timeline
-    results.append(
-        _run_prompt(
-            "timeline",
-            timestamp,
-            preview=preview,
-            attachments=log_attachments,
-            existing_timeline=existing_timeline,
-            background_context=current_relationship_status,
-            log_content=log_kwarg,
-        )
-    )
-
-    # relationship
-    results.append(
-        _run_prompt(
-            "relationship",
-            timestamp,
-            preview=preview,
-            attachments=log_attachments,
-            log_content=log_kwarg,
-            current_relationship_status=current_relationship_status,
-        )
-    )
 
     end_time = datetime.now()
     ok_count = sum(1 for r in results if r["result_code"] == "SUCCESS")

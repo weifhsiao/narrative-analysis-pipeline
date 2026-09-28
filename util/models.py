@@ -66,6 +66,11 @@ class PromptExecution(Base):
     parent = relationship("PromptExecution", remote_side=[prompt_exec_id])
 
 
+# context_type 字元限制：小寫英文、數字、底線（以 fullmatch 使用）。
+# type 名同時是 prompt 的填空標籤名 <T>；限定字元讓 lint 能分辨「填空標籤」與中文「結構標籤」。
+CONTEXT_TYPE_PATTERN = r"[a-z0-9_]+"
+
+
 class CharacterContext(Base):
     __tablename__ = "character_context"
 
