@@ -7,7 +7,7 @@ pipeline 只讀 DB;改完 .txt 要跑這支才會生效。每支 prompt:
 
 用法:
     python -m scripts.import_prompts           # 匯入全部 prompts/*.txt
-    python -m scripts.import_prompts --force   # lint ERROR 也照存(fresh DB 還沒有 context 時)
+    python -m scripts.import_prompts --force   # lint ERROR 也照存(例:DB 還沒有 prompt 用到的 context_type)
 """
 import argparse
 import logging
