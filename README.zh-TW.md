@@ -148,6 +148,15 @@ cp .env.example .env   # 填入 GEMINI_API_KEY
 
 ![summary 分析結果](docs/images/run_pipeline_success_case_db_row_data_summary.png)
 
+### 測試
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+測試只用記憶體 SQLite 與暫存目錄：不讀寫 `data/novel.db`(連線會直接報錯)、不寫 `data/`、不呼叫 Gemini。
+
 ## Roadmap
 
 - **Eval 擴充**：各分析類型的 exact-match 規則、LLM-as-judge 層(judge prompt + rubric)

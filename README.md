@@ -148,6 +148,15 @@ cp .env.example .env   # fill in GEMINI_API_KEY
 
 ![summary result](docs/images/run_pipeline_success_case_db_row_data_summary.png)
 
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Tests run against in-memory SQLite and temp directories only: they never touch `data/novel.db` (connecting raises), never write to `data/`, and never call Gemini.
+
 ## Roadmap
 
 - **Eval expansion**: exact-match rules per analysis type, and an LLM-as-judge layer (judge prompt + rubric)
