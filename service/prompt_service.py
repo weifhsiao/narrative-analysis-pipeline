@@ -25,7 +25,7 @@ _CLOSE_RE = re.compile(r"</(\w+)>")
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 _SLOT_RE = re.compile(CONTEXT_TYPE_PATTERN)
 
-# prompt 檔(prompts/*.txt)的區段標頭;max_length 為選填的單行設定
+# prompt 檔(prompts/*.txt)的區段標頭:只認獨立成行
 _SYSTEM_HEADER_RE = re.compile(r"^# system instruction[ \t]*$", re.MULTILINE)
 _PROMPT_HEADER_RE = re.compile(r"^# prompt[ \t]*$", re.MULTILINE)
 
@@ -117,7 +117,8 @@ def load_prompt(
     context_types = list_context_types(db)
     system_snapshot, system_sent = _render(system, db, character_id, run_params, context_types)
     prompt_snapshot, prompt_sent = _render(prompt, db, character_id, run_params, context_types)
-    tags = {m.group(1) for m in _TAG_RE.finditer(f"{system}\n{prompt}")}
+    # 分段掃,跟 _render 各段各自填的方式一致;只算最外層、真的會被填的標籤
+    tags = {m.group(1) for text in (system, prompt) for m in _TAG_RE.finditer(text)}
 
     return RenderedPrompt(
         prompt_id=template.prompt_id,
@@ -191,7 +192,8 @@ def _lint_text(
         if tag in nested:
             issues.append(LintIssue(
                 "ERROR", name,
-                f"<{tag}> 包在 <{nested[tag]}> 裡面,引擎不會填(填空標籤要放在其他標籤外)",
+                f"<{tag}> 包在 <{nested[tag]}> 裡面,引擎不會填(填空標籤要放在其他標籤外;"
+                f"範圍從第一個 <{nested[tag]}> 算起,內文提到這個標籤名也算)",
             ))
             continue
         if tag in RUN_PARAM_NAMES:
@@ -212,6 +214,25 @@ def _lint_text(
     for ph in sorted(set(_PLACEHOLDER_RE.findall(text)) & (RUN_PARAM_NAMES | context_types)):
         issues.append(LintIssue("WARN", name, f"殘留舊佔位 {{{ph}}},新引擎不會填入"))
 
+    return issues, used_types
+
+
+def _lint_template(
+    db: Session,
+    name: str,
+    system: str,
+    prompt: str,
+    context_types: set[str],
+    character_id: int | None,
+) -> tuple[list[LintIssue], set[str]]:
+    """system / prompt 分段 lint:引擎各段各自填,標籤跨段(開在 system、閉在 prompt)
+    填不到,要報不成對;某段提到的標籤名也不該影響另一段。同一問題兩段都有只報一次。"""
+    issues: list[LintIssue] = []
+    used_types: set[str] = set()
+    for text in (system, prompt):
+        found, used = _lint_text(db, name, text, context_types, character_id)
+        issues += [i for i in found if i not in issues]
+        used_types |= used
     return issues, used_types
 
 
@@ -243,8 +264,9 @@ def lint_prompts(
         templates = [t for t in templates if t.prompt_name in names]
 
     for t in templates:
-        text = f"{t.system_instruction or ''}\n{t.prompt or ''}"
-        found_issues, used = _lint_text(db, t.prompt_name, text, context_types, character_id)
+        found_issues, used = _lint_template(
+            db, t.prompt_name, t.system_instruction or "", t.prompt or "", context_types, character_id
+        )
         issues += found_issues
         used_types |= used
 
@@ -267,7 +289,7 @@ def save_prompt(
     lint 有 ERROR 丟 PromptLintError,force=True 時照存(例:fresh DB 還沒有 context,
     type 一定對不上)。WARN 不擋,連同結果一起回傳給呼叫端顯示。
     """
-    issues, _ = _lint_text(db, name, f"{system}\n{prompt}", list_context_types(db), None)
+    issues, _ = _lint_template(db, name, system, prompt, list_context_types(db), None)
     errors = [i for i in issues if i.level == "ERROR"]
     if errors and not force:
         raise PromptLintError(errors)

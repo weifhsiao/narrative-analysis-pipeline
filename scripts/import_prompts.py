@@ -33,7 +33,7 @@ def main():
     try:
         for path in sorted(PROMPTS_DIR.glob("*.txt")):
             name = path.stem
-            system, prompt = parse_prompt_file(path.read_text(encoding="utf-8"))
+            system, prompt = parse_prompt_file(path.read_text(encoding="utf-8-sig"))  # utf-8-sig:去掉 BOM,標頭才比得到
             try:
                 template, issues = save_prompt(db, name, system, prompt, force=args.force)
             except PromptLintError as e:

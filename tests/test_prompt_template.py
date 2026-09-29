@@ -114,6 +114,18 @@ def test_parse_headers_must_be_whole_lines():
     assert parse_prompt_file(text) == ("請用 # prompts 格式", "內容 # prompt 也照留")
 
 
+def test_parse_line_starting_with_prompts_is_not_a_header():
+    text = "# system instruction\nS\n# prompts 說明\n# prompt\nP"
+
+    assert parse_prompt_file(text) == ("S\n# prompts 說明", "P")
+
+
+def test_parse_system_header_text_in_body_is_kept():
+    text = "說明 # system instruction 字樣\n# prompt\nP"
+
+    assert parse_prompt_file(text) == ("說明 # system instruction 字樣", "P")
+
+
 def test_parse_prompt_header_alone_is_not_sent():
     assert parse_prompt_file("# prompt\n內容") == ("", "內容")
 
@@ -149,6 +161,18 @@ def test_load_snapshot_fills_context_but_keeps_run_param_tag(db):
     assert r.prompt == "<log_content>\nLOG\n</log_content>"
     assert r.prompt_snapshot == "<log_content></log_content>"
     assert r.used_run_params == {"log_content"}
+
+
+def test_load_run_params_counted_per_section(db):
+    # system 提到 <參考範例> 不影響 prompt 裡的 <log_content>(接起來掃會被誤當成包在裡面)
+    create_prompt_version(
+        db, "recap", "請依照 <參考範例> 的格式", "<log_content></log_content>\n<參考範例>x</參考範例>"
+    )
+
+    r = load_prompt("recap", db, 1, {"log_content": "LOG"})
+
+    assert r.used_run_params == {"log_content"}
+    assert "<log_content>\nLOG\n</log_content>" in r.prompt
 
 
 def test_load_without_log_tag_reports_no_run_params(db):
