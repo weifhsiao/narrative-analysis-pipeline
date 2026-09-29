@@ -1,19 +1,12 @@
-import os
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from util import config
 from util.paths import DATA_DIR
-
-# .env 只在這裡 load:engine 在 import 當下建立,而 API/script 入口都會經過 db_util(不覆蓋既有環境變數)
-load_dotenv()
 
 DB_DIR = DATA_DIR
 DB_DIR.mkdir(exist_ok=True)
 
-# SQL_ECHO=true 時印出 SQL(dev debug 用);預設關閉,demo/截圖不被 SQL log 洗版
-SQL_ECHO = os.getenv("SQL_ECHO", "false").strip().lower() in ("1", "true", "yes")
-
-engine = create_engine(f"sqlite:///{DB_DIR}/novel.db", echo=SQL_ECHO)
+engine = create_engine(f"sqlite:///{DB_DIR}/novel.db", echo=config.sql_echo())
 SessionLocal = sessionmaker(engine)
 
 

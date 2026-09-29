@@ -1,8 +1,8 @@
-import os
 import time
 from datetime import datetime
 from util.file_util import write_response
-from util.ai_client import get_client, configured_model, Attachment, AIBlockedError, TokenUsage
+from util import config
+from util.ai_client import get_client, Attachment, AIBlockedError, TokenUsage
 from util.models import PromptExecution, ResultCode
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
@@ -22,7 +22,7 @@ def _run_prompt(
     preview: bool = False,
     attachments: list[Attachment] | None = None,
 ) -> dict:
-    ai_model = configured_model()
+    ai_model = config.gemini_model()
     start_time = datetime.now()
     print(
         f"prompt=[{prompt_name}]  | model=[{ai_model}] | preview=[{preview}] | start."
@@ -136,8 +136,7 @@ def run_pipeline(
     # load parameter file
     log_content = assemble_dialogue(character_id, db, range_start, range_end)
 
-    # log 輸入模式:inline(純文字內嵌,預設) / attachment(夾檔)
-    log_input_mode = os.getenv("LOG_INPUT_MODE", "inline")
+    log_input_mode = config.log_input_mode()
     if log_input_mode == "attachment":
         # placeholder 換成指向附件的提示,真正 log 走附件;各 prompt 共用同一個 Attachment
         log_text = "（完整劇情內容請見附件檔案 story_log.txt）"
