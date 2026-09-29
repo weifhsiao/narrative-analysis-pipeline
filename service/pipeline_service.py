@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from util.file_util import write_response
 from util.ai_client import get_client, configured_model, Attachment, AIBlockedError, TokenUsage
-from util.models import PromptExecution
+from util.models import PromptExecution, ResultCode
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
 from service.novel_log_service import assemble_dialogue
@@ -35,22 +35,22 @@ def _run_prompt(
         if "log_content" not in rendered.used_run_params:
             attachments = None
         if preview:
-            code, content = "PREVIEW", None
+            code, content = ResultCode.PREVIEW, None
         else:
             result = get_client().generate(
                 rendered.prompt, rendered.system, attachments=attachments
             )
             write_response(result.text, timestamp, f"{prompt_name}")
-            code, content, usage = "SUCCESS", result.text, result.usage
+            code, content, usage = ResultCode.SUCCESS, result.text, result.usage
     except AIBlockedError as e:
         # 200 but no usable text (content/safety block). Store the real reason,
         # not a downstream error. generate() raises before write_response, so no
         # empty response file is written. Blocked input is usually still billed.
-        code, content, usage = "BLOCKED", str(e), e.usage
+        code, content, usage = ResultCode.BLOCKED, str(e), e.usage
     except Exception as e:
         # Everything else: API errors (4xx/5xx), network issues, bugs.
         # str(APIError) already includes the HTTP code, e.g. "400 INVALID_ARGUMENT...".
-        code, content = "ERROR", str(e)
+        code, content = ResultCode.ERROR, str(e)
 
     end_time = datetime.now()
 
@@ -101,7 +101,7 @@ def _to_preview(result: dict) -> dict:
             f"{a.filename or '(unnamed)'} | {a.mime_type} | {len(a.data)} bytes"
             for a in result["attachments"] or []
         ],
-        "error": result["result_content"] if result["result_code"] == "ERROR" else None,
+        "error": result["result_content"] if result["result_code"] == ResultCode.ERROR else None,
     }
 
 
@@ -178,9 +178,9 @@ def run_pipeline(
         )
 
     end_time = datetime.now()
-    ok_count = sum(1 for r in results if r["result_code"] == "SUCCESS")
-    blocked_count = sum(1 for r in results if r["result_code"] == "BLOCKED")
-    error_count = sum(1 for r in results if r["result_code"] == "ERROR")
+    ok_count = sum(1 for r in results if r["result_code"] == ResultCode.SUCCESS)
+    blocked_count = sum(1 for r in results if r["result_code"] == ResultCode.BLOCKED)
+    error_count = sum(1 for r in results if r["result_code"] == ResultCode.ERROR)
 
     print(
         f"[run_pipeline] end | total=[{(end_time - start_time).total_seconds()}]s | ok=[{ok_count}] | blocked=[{blocked_count}] | error=[{error_count}]"

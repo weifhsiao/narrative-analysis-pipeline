@@ -2,6 +2,7 @@ import argparse
 from evals.prompt_evals import length_check
 from util.crud.prompt import get_prompt_execution_by_id, get_prompt_template_by_id
 from util.db_util import SessionLocal, engine
+from util.models import ResultCode
 
 engine.echo = False
 if __name__ == "__main__":
@@ -25,7 +26,7 @@ if __name__ == "__main__":
 
         if prompt_execution is None:
             raise Exception("prompt_execution is None.")
-        elif prompt_execution.result_code != "SUCCESS":
+        elif prompt_execution.result_code != ResultCode.SUCCESS:
             raise Exception(f"result_code is [{prompt_execution.result_code}]")
         elif not prompt_execution.result_content:  # None,"",0,[]都會抓
             raise Exception(f"prompt_execution length <= 0")

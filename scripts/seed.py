@@ -16,7 +16,7 @@ from sqlalchemy import inspect
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from util.db_util import SessionLocal, engine
-from util.models import Base, Character, CharacterContext, Run, NovelLog, PromptExecution
+from util.models import Base, Character, CharacterContext, Run, NovelLog, PromptExecution, ResultCode
 
 # range_type: 1=log_time / 2=page（未來擴充）
 RANGE_TYPE_LOG_TIME = 1
@@ -177,7 +177,7 @@ def seed_runs(db: Session) -> None:
 
 def seed_prompt_executions(db: Session) -> None:
     db.add_all(
-        PromptExecution(run_id=1, result_code="SUCCESS", result_content=content)
+        PromptExecution(run_id=1, result_code=ResultCode.SUCCESS, result_content=content)
         for content in _seed_execution_contents()
     )
     db.flush()
