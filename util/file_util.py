@@ -1,7 +1,7 @@
-from pathlib import Path
+from util.paths import REPO_DIR
 
-# 往上兩層到專案根目錄
-BASE_DIR = Path(__file__).parent.parent
+# 測試會把它換成 tmp_path
+BASE_DIR = REPO_DIR
 
 
 def write_response(content: str, timestamp: str, name: str = "response"):

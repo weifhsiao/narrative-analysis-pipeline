@@ -2,12 +2,12 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from pathlib import Path
+from util.paths import DATA_DIR
 
 # .env 只在這裡 load:engine 在 import 當下建立,而 API/script 入口都會經過 db_util(不覆蓋既有環境變數)
 load_dotenv()
 
-DB_DIR = Path("./data")
+DB_DIR = DATA_DIR
 DB_DIR.mkdir(exist_ok=True)
 
 # SQL_ECHO=true 時印出 SQL(dev debug 用);預設關閉,demo/截圖不被 SQL log 洗版
