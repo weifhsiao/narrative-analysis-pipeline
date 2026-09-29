@@ -1,10 +1,9 @@
 import argparse
 from evals.prompt_evals import length_check
 from util.crud.prompt import get_prompt_execution_by_id, get_prompt_template_by_id
-from util.db_util import SessionLocal, engine
+from util.db_util import SessionLocal, quiet_sql
 from util.models import ResultCode
 
-engine.echo = False
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -17,6 +16,7 @@ if __name__ == "__main__":
         help="Length limit; defaults to max_length of the prompt version that produced the execution",
     )
     args = parser.parse_args()
+    quiet_sql()
 
     prompt_exec_id = args.execution_id
     length_limit = args.limit

@@ -10,10 +10,9 @@ pipeline 只讀 DB;改完 .txt 要跑這支才會生效。每支 prompt:
     python -m scripts.import_prompts --force   # lint ERROR 也照存(例:DB 還沒有 prompt 用到的 context_type)
 """
 import argparse
-import logging
 import sys
 
-from util.db_util import SessionLocal
+from util.db_util import SessionLocal, quiet_sql
 from util.file_util import BASE_DIR
 from service.prompt_service import PromptLintError, parse_prompt_file, save_prompt
 
@@ -25,8 +24,7 @@ def main():
     parser.add_argument("--force", action="store_true", help="lint 有 ERROR 也照存")
     args = parser.parse_args()
 
-    # 同 lint CLI:報告不受 SQL_ECHO 影響
-    logging.disable(logging.INFO)
+    quiet_sql()
 
     failed = 0
     db = SessionLocal()

@@ -17,6 +17,11 @@ engine = create_engine(f"sqlite:///{DB_DIR}/novel.db", echo=SQL_ECHO)
 SessionLocal = sessionmaker(engine)
 
 
+def quiet_sql() -> None:
+    """報告型 CLI(lint / import_prompts / eval)用:就算 .env 開了 SQL_ECHO,輸出也不被 SQL log 洗掉。"""
+    engine.echo = False
+
+
 # yield:交給呼叫方使用，最後確保關閉
 def get_db():
     db = SessionLocal()
