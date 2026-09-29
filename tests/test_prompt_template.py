@@ -98,14 +98,24 @@ def test_save_returns_warnings_without_blocking(db):
 # ---- parse_prompt_file ----
 
 
-def test_parse_splits_sections_and_reads_max_length():
-    text = "# max_length: 700\n# system instruction\n系統\n\n# prompt\n內容\n"
+def test_parse_splits_sections():
+    text = "# system instruction\n系統\n\n# prompt\n內容\n"
 
-    assert parse_prompt_file(text) == ("系統", "內容", 700)
+    assert parse_prompt_file(text) == ("系統", "內容")
 
 
 def test_parse_without_headers_is_all_prompt():
-    assert parse_prompt_file("\n只有內容\n") == ("", "只有內容", None)
+    assert parse_prompt_file("\n只有內容\n") == ("", "只有內容")
+
+
+def test_parse_headers_must_be_whole_lines():
+    text = "# system instruction\n請用 # prompts 格式\n# prompt\n內容 # prompt 也照留"
+
+    assert parse_prompt_file(text) == ("請用 # prompts 格式", "內容 # prompt 也照留")
+
+
+def test_parse_prompt_header_alone_is_not_sent():
+    assert parse_prompt_file("# prompt\n內容") == ("", "內容")
 
 
 # ---- load_prompt ----

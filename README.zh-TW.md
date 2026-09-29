@@ -65,7 +65,7 @@ Eval 不在生成流程內做，而是獨立的開發者工具：`evals/run_eval
 - 驗證邏輯的增修完全不影響 pipeline 本身
 - 入口是 script 而非 API endpoint——eval 是開發者的品質工具，不是產品功能
 
-目前的規則是 `length_check`(輸出長度上限檢查，`--execution-id` 由 CLI 指定;上限預設取產生該筆結果的 prompt 版本的 `max_length`,`--limit` 可覆寫);規則庫刻意從最簡單的一條開始，先驗證「解耦架構 + 讀庫檢查」這條路走得通，更多規則與 LLM-as-judge 見 Roadmap。
+目前的規則是 `length_check`(輸出長度上限檢查，`--execution-id` 由 CLI 指定;上限由 `--limit` 指定，或在產生該筆結果的 prompt 版本有設定 `max_length` 時取用);規則庫刻意從最簡單的一條開始，先驗證「解耦架構 + 讀庫檢查」這條路走得通，更多規則與 LLM-as-judge 見 Roadmap。
 
 ### AI Provider 抽象
 
@@ -73,7 +73,7 @@ Eval 不在生成流程內做，而是獨立的開發者工具：`evals/run_eval
 
 ### Prompt:純文字原始檔,DB 內版本化
 
-prompt 以 `prompts/` 下的 txt 檔編輯(`# system instruction` / `# prompt` 區段分離,可選 `# max_length: N` 給 eval 用)。prompt 迭代是高頻操作，原始檔維持純文字，調整措辭不需動程式碼、diff 也乾淨。
+prompt 以 `prompts/` 下的 txt 檔編輯(`# system instruction` / `# prompt` 區段分離，標頭各自獨立成行)。prompt 迭代是高頻操作，原始檔維持純文字，調整措辭不需動程式碼、diff 也乾淨。
 
 pipeline **只從 DB 讀 prompt**(`prompt_template`)。`python -m scripts.import_prompts` 是唯一寫入點：逐檔 lint(標籤 ↔ 既有 context type,有 ERROR 擋下)、與最新版相同就跳過、否則新增一版——模板 append-only,同一支 prompt 的各版以 `root_prompt_id` + `version` 串起。**改完 txt 要跑 import 才會生效。**
 
@@ -142,7 +142,7 @@ uvicorn api.app:app --reload
 
 想先看 pipeline 實際組出的 prompt、但不呼叫 LLM，可用 preview：
 
-`POST /runs/{run_id}/preview`——對分析批次組出 pipeline 的 prompt,直接回傳實際會送出的內容(system instruction 與 prompt 分離、背景 context 與 log 已填入),**不呼叫 Gemini、不寫檔、不寫入資料庫**。與下方 `execute` 走同一條 pipeline,差別只在 preview 不打 API、不入庫，因此免金鑰即可檢視 prompt 組裝結果。
+`POST /runs/{run_id}/preview`——對分析批次組出 pipeline 的 prompt,直接回傳實際會送出的內容(system instruction 與 prompt 分離、背景 context 與 log 已填入;`LOG_INPUT_MODE=attachment` 時 prompt 裡是指向附件的提示，preview 只列出附件名稱與大小、不含 log 本文),**不呼叫 Gemini、不寫檔、不寫入資料庫**。與下方 `execute` 走同一條 pipeline,差別只在 preview 不打 API、不入庫，因此免金鑰即可檢視 prompt 組裝結果。
 
 ### 選用：自行重跑生成(需 Gemini API key)
 

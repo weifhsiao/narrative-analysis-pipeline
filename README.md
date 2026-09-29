@@ -65,7 +65,7 @@ Eval doesn't run inside the generation flow; it's a separate developer tool. `ev
 - Adding or changing validation logic doesn't touch the pipeline itself
 - The entry point is a script, not an API endpoint — eval is a developer quality tool, not a product feature
 
-The current rule is `length_check` (an output length-limit check; `--execution-id` via CLI; the limit defaults to the `max_length` of the prompt version that produced the execution, or `--limit` overrides it). The rule set deliberately starts with the simplest single rule, to first prove out the "decoupled architecture + read-from-DB check" path; more rules and LLM-as-judge are in the Roadmap.
+The current rule is `length_check` (an output length-limit check; `--execution-id` via CLI; the limit comes from `--limit`, or from the `max_length` of the prompt version that produced the execution when one is set). The rule set deliberately starts with the simplest single rule, to first prove out the "decoupled architecture + read-from-DB check" path; more rules and LLM-as-judge are in the Roadmap.
 
 ### AI provider abstraction
 
@@ -73,7 +73,7 @@ The current rule is `length_check` (an output length-limit check; `--execution-i
 
 ### Prompts: plain-text source, versioned in the DB
 
-Prompts are edited as `.txt` files under `prompts/` (`# system instruction` / `# prompt` sections, optional `# max_length: N` for eval). Prompt iteration is a high-frequency operation; keeping the source as plain text means wording changes don't require code changes, and diffs stay clean.
+Prompts are edited as `.txt` files under `prompts/` (`# system instruction` / `# prompt` sections, each header on its own line). Prompt iteration is a high-frequency operation; keeping the source as plain text means wording changes don't require code changes, and diffs stay clean.
 
 The pipeline reads prompts **only from the DB** (`prompt_template`). `python -m scripts.import_prompts` is the single write path: it lints each file (tags vs. known context types; errors block the save), skips files identical to the latest version, and otherwise appends a new version — templates are append-only, with versions of one prompt chained by `root_prompt_id` + `version`. **After editing a `.txt`, run the import for the change to take effect.**
 
@@ -142,7 +142,7 @@ Open Swagger UI: <http://127.0.0.1:8000/docs>
 
 To see the prompt the pipeline actually assembles without calling the LLM, use preview:
 
-`POST /runs/{run_id}/preview` — assembles the pipeline prompts for the analysis batch and returns exactly what would be sent (system instruction and prompt separated, background context and log filled in). It **does not call Gemini, write files, or write to the database**. It runs the same pipeline as `execute` below, differing only in that preview doesn't call the API or persist — so you can inspect the assembled prompt with no key.
+`POST /runs/{run_id}/preview` — assembles the pipeline prompts for the analysis batch and returns exactly what would be sent (system instruction and prompt separated, background context and log filled in; with `LOG_INPUT_MODE=attachment` the prompt carries a pointer to the attached file instead, and preview lists the attachment's name and size rather than the log text). It **does not call Gemini, write files, or write to the database**. It runs the same pipeline as `execute` below, differing only in that preview doesn't call the API or persist — so you can inspect the assembled prompt with no key.
 
 ### Optional: re-run generation yourself (Gemini API key required)
 
