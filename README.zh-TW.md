@@ -97,14 +97,14 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. 初始化範例資料(範例角色與虛構 context、分析批次、四筆預先產生的分析結果;可重複執行)
+# 2. 初始化範例資料(範例角色與虛構 context、分析批次、四筆預先產生的分析結果;DB 只有 seed 資料時可重複執行)
 python -m scripts.seed
 
 # 3. 把 prompt 匯入 DB
 python -m scripts.import_prompts
 ```
 
-`scripts.seed` 會先**清空** character / run / prompt_execution / novel_log / character_context 再重建範例。DB 裡若有 seed 以外的資料(其他角色、匯入過的 log、自己跑出的結果、改過的 context),會直接中止、不動任何資料;確定要清掉才加 `--yes`。
+`scripts.seed` 會先**清空** character / run / prompt_execution / novel_log / character_context 再重建範例。DB 裡若有 seed 以外的資料(其他角色、匯入過的 log——包括下方的範例 log、自己跑出的結果、改過或停用的 context),會直接中止、不動任何資料;確定要清掉才加 `--yes`。
 
 既有的 `data/novel.db`(prompt 版本化之前建立)升級:先跑 `python -m scripts.migrate_prompt_template --write`(會先備份),再跑 `python -m scripts.import_prompts`。
 

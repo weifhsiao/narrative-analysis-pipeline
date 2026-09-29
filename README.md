@@ -98,14 +98,14 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # 2. Initialize sample data (sample character with fictional context, analysis batch,
-#    four pre-generated results; re-runnable)
+#    four pre-generated results; re-runnable while the DB holds only seed data)
 python -m scripts.seed
 
 # 3. Import prompts into the DB
 python -m scripts.import_prompts
 ```
 
-`scripts.seed` **wipes** the character / run / prompt_execution / novel_log / character_context tables before re-creating the sample. If the DB holds anything seed didn't create (another character, imported logs, your own results, edited context), it aborts without touching anything; add `--yes` only if you really want that data wiped.
+`scripts.seed` **wipes** the character / run / prompt_execution / novel_log / character_context tables before re-creating the sample. If the DB holds anything seed didn't create (another character, imported logs — including the sample log below — your own results, edited or deactivated context), it aborts without touching anything; add `--yes` only if you really want that data wiped.
 
 Upgrading an existing `data/novel.db` from before prompt versioning: run `python -m scripts.migrate_prompt_template --write` (backs up first), then `python -m scripts.import_prompts`.
 

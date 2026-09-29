@@ -134,10 +134,19 @@ def find_foreign_data(db: Session) -> list[str]:
         {(r["run_id"], r["character_id"], r["range_type"], r["range_start"], r["range_end"]) for r in SEED_RUNS},
         "非 seed run",
     )
+    # 比對所有使用者可改的欄位:只停用、改標題或排序也算改過
     check(
         CharacterContext,
-        lambda r: (r.character_id, r.context_type, r.context_content),
-        {(c["character_id"], c["context_type"], c["context_content"]) for c in SEED_CONTEXTS},
+        lambda r: (
+            r.character_id, r.context_type, r.context_content, r.sort_order, r.title, r.is_active
+        ),
+        {
+            (
+                c["character_id"], c["context_type"], c["context_content"],
+                c["sort_order"], c["title"], c.get("is_active", True),
+            )
+            for c in SEED_CONTEXTS
+        },
         "非 seed context",
     )
     check(

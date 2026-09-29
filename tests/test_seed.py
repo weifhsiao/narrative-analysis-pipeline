@@ -108,11 +108,19 @@ def test_foreign_data_is_reported(db, add_foreign, table):
     assert [line.split(":")[0] for line in found] == [table]
 
 
-def test_edited_seed_context_counts_as_foreign(db):
+@pytest.mark.parametrize(
+    "edit",
+    [
+        {"context_content": "使用者改過"},
+        {"is_active": False},
+        {"title": "改過的標題"},
+        {"sort_order": 9},
+    ],
+    ids=["content", "is_active", "title", "sort_order"],
+)
+def test_edited_seed_context_counts_as_foreign(db, edit):
     _seed(db)
-    db.query(CharacterContext).filter_by(context_type="timeline").update(
-        {"context_content": "使用者改過"}
-    )
+    db.query(CharacterContext).filter_by(context_type="timeline").update(edit)
 
     assert seed.find_foreign_data(db) == ["character_context: 1 筆非 seed context"]
 
