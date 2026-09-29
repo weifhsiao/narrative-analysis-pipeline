@@ -30,15 +30,15 @@ flowchart TB
         Models["models(SQLAlchemy ORM)"]
     end
 
-    Prompts[("prompts/ *.txt")]
+    Prompts[("prompts/ *.txt<br/>(編輯用原始檔)")]
     DB[("SQLite")]
     Gemini[["Gemini API"]]
 
     API --> Service
     Service --> Parser
-    Service --> Prompts
     Service --> AIClient --> Gemini
     Service --> CRUD --> Models --> DB
+    Prompts -. "scripts.import_prompts(lint、新增版本)" .-> DB
     EvalScript -. "直接讀已存結果(與 pipeline 解耦)" .-> DB
 ```
 
@@ -49,7 +49,7 @@ flowchart TB
 | `util/` | 基礎設施：ai_client(Provider 抽象 + Gemini 實作)、log 解析、DB 連線、ORM models |
 | `util/crud/` | DAO 層：各表的資料存取，commit 由呼叫方負責 |
 
-另有 `prompts/`(prompt 純文字檔，system instruction 與 prompt 區段分離)、`evals/`(規則函式 + script 入口)。
+另有 `prompts/`(prompt 純文字原始檔，匯入 DB 成為有版本的模板)、`evals/`(規則函式 + script 入口)。
 
 **雙入口設計**：開發者批次操作走 script(`service/novel_log_service.py` 的解析入口、`evals/run_eval.py`)，服務化與互動測試走 API(Swagger)。
 
@@ -65,19 +65,23 @@ Eval 不在生成流程內做，而是獨立的開發者工具：`evals/run_eval
 - 驗證邏輯的增修完全不影響 pipeline 本身
 - 入口是 script 而非 API endpoint——eval 是開發者的品質工具，不是產品功能
 
-目前的規則是 `length_check`(輸出長度上限檢查，`--execution-id` / `--limit` 由 CLI 指定);規則庫刻意從最簡單的一條開始，先驗證「解耦架構 + 讀庫檢查」這條路走得通，更多規則與 LLM-as-judge 見 Roadmap。
+目前的規則是 `length_check`(輸出長度上限檢查，`--execution-id` 由 CLI 指定;上限由 `--limit` 指定，或在產生該筆結果的 prompt 版本有設定 `max_length` 時取用);規則庫刻意從最簡單的一條開始，先驗證「解耦架構 + 讀庫檢查」這條路走得通，更多規則與 LLM-as-judge 見 Roadmap。
 
 ### AI Provider 抽象
 
 `ai_client` 以 `AIClient` 抽象基底類別定義介面，`GeminiClient` 為目前唯一實作。業務邏輯只依賴抽象，更換或增加模型供應商(如本地 Ollama)不動 service 層。
 
-### Prompt 外置為純文字檔
+### Prompt:純文字原始檔,DB 內版本化
 
-四種分析的 prompt 放在 `prompts/` 下的 txt 檔，以 `# system instruction` 與 `# prompt` 區段分離。prompt 迭代是高頻操作，外置後調整措辭不需動程式碼、diff 也乾淨。
+prompt 以 `prompts/` 下的 txt 檔編輯(`# system instruction` / `# prompt` 區段分離，標頭各自獨立成行)。prompt 迭代是高頻操作，原始檔維持純文字，調整措辭不需動程式碼、diff 也乾淨。
+
+pipeline **只從 DB 讀 prompt**(`prompt_template`)。`python -m scripts.import_prompts` 是唯一寫入點：逐檔 lint(標籤 ↔ 既有 context type,有 ERROR 擋下)、與最新版相同就跳過、否則新增一版——模板 append-only,同一支 prompt 的各版以 `root_prompt_id` + `version` 串起。**改完 txt 要跑 import 才會生效。**
+
+context 標籤在執行當下才從可能事後變動的資料填入，因此每筆執行另存「填好 context 的 system/prompt」快照(`<log_content>` 標籤保持原樣，log 由 run 範圍重建),以及 provider 中立的模型與 token 用量。
 
 ### Schema 預留重跑追溯
 
-`prompt_execution` 表以 `parent_exec_id` 自關聯：未來對失敗或品質不佳的執行做 rerun 時，新舊執行可以串成追溯鏈，而不是覆蓋或斷開歷史。分析範圍則由 `run` 表的 `range_type` / `range_start` / `range_end` 定義，同一角色可建立多個不同範圍的分析批次。
+每筆 `prompt_execution` 以 `prompt_id` 指到當時跑的那一版 prompt,並以 `parent_exec_id` 自關聯：未來對失敗或品質不佳的執行做 rerun 時，新舊執行可以串成追溯鏈，而不是覆蓋或斷開歷史。分析範圍則由 `run` 表的 `range_type` / `range_start` / `range_end` 定義，同一角色可建立多個不同範圍的分析批次。
 
 ## Quickstart
 
@@ -95,9 +99,15 @@ pip install -r requirements.txt
 
 # 2. 初始化範例資料(範例角色、分析批次、四筆預先產生的分析結果;可重複執行)
 python -m scripts.seed
+
+# 3. 把 prompt 匯入 DB(--force:全新範例 DB 還沒有角色 context,
+#    context 標籤對不上會被 lint 擋下)
+python -m scripts.import_prompts --force
 ```
 
-**3. 跑 eval**(讀取已入庫的範例結果，不重打 API，免金鑰)：
+既有的 `data/novel.db`(prompt 版本化之前建立)升級:先跑 `python -m scripts.migrate_prompt_template --write`(會先備份),再跑 `python -m scripts.import_prompts`。
+
+**4. 跑 eval**(讀取已入庫的範例結果，不重打 API，免金鑰)：
 
 範例結果對應的 `execution_id`(seed 依 `examples/results/` 檔名順序載入)：
 
@@ -132,7 +142,7 @@ uvicorn api.app:app --reload
 
 想先看 pipeline 實際組出的 prompt、但不呼叫 LLM，可用 preview：
 
-`POST /runs/{run_id}/preview`——對 seed 建立的分析批次組出四種 prompt 並寫入 `data/debug_log/{timestamp}/`，**不呼叫 Gemini、不寫入資料庫**，回傳寫出的 debug 檔路徑。與下方 `execute` 走同一條 pipeline，差別只在 preview 不打 API、不入庫，因此免金鑰即可檢視 prompt 組裝結果(system instruction 與 prompt 分離、背景 context 填充)。
+`POST /runs/{run_id}/preview`——對分析批次組出 pipeline 的 prompt,直接回傳實際會送出的內容(system instruction 與 prompt 分離、背景 context 與 log 已填入;`LOG_INPUT_MODE=attachment` 時 prompt 裡是指向附件的提示，preview 只列出附件名稱與大小、不含 log 本文),**不呼叫 Gemini、不寫檔、不寫入資料庫**。與下方 `execute` 走同一條 pipeline,差別只在 preview 不打 API、不入庫，因此免金鑰即可檢視 prompt 組裝結果。
 
 ### 選用：自行重跑生成(需 Gemini API key)
 
@@ -142,7 +152,7 @@ uvicorn api.app:app --reload
 cp .env.example .env   # 填入 GEMINI_API_KEY
 ```
 
-`POST /runs/1/execute`——對 seed 建立的分析批次執行四種 prompt，呼叫 Gemini 並將結果寫入 `prompt_execution` 表。
+`POST /runs/1/execute`——對 seed 建立的分析批次執行 pipeline 的 prompt，呼叫 Gemini 並將結果寫入 `prompt_execution` 表(含 prompt 版本、context 快照、模型與 token 用量)。
 
 ![pipeline 執行](docs/images/run_pipeline_success_case_req_res.png)
 

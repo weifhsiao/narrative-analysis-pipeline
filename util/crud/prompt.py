@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from util.models import PromptExecution, PromptTemplate
 from datetime import datetime
@@ -74,53 +74,70 @@ def get_prompt_execution_by_id(
     return db.execute(stmt).scalar_one_or_none()
 
 
-# get_all_prompt_template
-def get_all_prompt_template(db: Session) -> list[PromptTemplate]:
-    stmt = select(PromptTemplate)
-    return db.execute(stmt).scalars().all()
-
-
 def get_prompt_template_by_id(db: Session, prompt_id: int) -> PromptTemplate | None:
     stmt = select(PromptTemplate).where(PromptTemplate.prompt_id == prompt_id)
     return db.execute(stmt).scalar_one_or_none()
 
 
-# create_prompt_template
-def create_prompt_template(
-    db: Session, prompt_template: PromptTemplate
-) -> PromptTemplate:
-    db.add(prompt_template)
-    db.flush()
-    db.refresh(prompt_template)
+def get_latest_prompt_template(db: Session, prompt_name: str) -> PromptTemplate | None:
+    """name 對應那支 prompt 的最新版;同一支各版 name 一致,取 max(version)。"""
+    stmt = (
+        select(PromptTemplate)
+        .where(PromptTemplate.prompt_name == prompt_name)
+        .order_by(PromptTemplate.version.desc())
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none()
 
-    return prompt_template
+
+def get_latest_prompt_templates(db: Session) -> list[PromptTemplate]:
+    """每支 prompt(root)各取最新版,依 name 排序。"""
+    latest = (
+        select(
+            PromptTemplate.root_prompt_id,
+            func.max(PromptTemplate.version).label("version"),
+        )
+        .group_by(PromptTemplate.root_prompt_id)
+        .subquery()
+    )
+    stmt = (
+        select(PromptTemplate)
+        .join(
+            latest,
+            (PromptTemplate.root_prompt_id == latest.c.root_prompt_id)
+            & (PromptTemplate.version == latest.c.version),
+        )
+        .order_by(PromptTemplate.prompt_name)
+    )
+    return db.execute(stmt).scalars().all()
 
 
-# update_prompt
-def update_prompt(
+def create_prompt_version(
     db: Session,
-    prompt_id: int,
-    prompt_name: str | None = None,
-    system_instruction: str | None = None,
-    prompt: str | None = None,
-) -> PromptTemplate | None:
-    prompt_template = db.execute(
-        select(PromptTemplate).where(PromptTemplate.prompt_id == prompt_id)
-    ).scalar_one_or_none()
+    prompt_name: str,
+    system_instruction: str,
+    prompt: str,
+    max_length: int | None = None,
+) -> PromptTemplate:
+    """append-only:name 沒有既有版本就建 v1(root 指自己),有就接在最新版後面 +1。
 
-    if prompt_template is None:
-        return None
-
-    if prompt_name is not None:
-        prompt_template.prompt_name = prompt_name
-
-    if system_instruction is not None:
-        prompt_template.system_instruction = system_instruction
-
-    if prompt is not None:
-        prompt_template.prompt = prompt
-
+    不做驗證(lint / 內容相同跳過),那是 service 層 save_prompt 的事。
+    """
+    latest = get_latest_prompt_template(db, prompt_name)
+    template = PromptTemplate(
+        prompt_name=prompt_name,
+        system_instruction=system_instruction,
+        prompt=prompt,
+        max_length=max_length,
+        version=latest.version + 1 if latest else 1,
+        root_prompt_id=latest.root_prompt_id if latest else None,
+    )
+    db.add(template)
     db.flush()
-    db.refresh(prompt_template)
+    if latest is None:
+        # v1 的 root 是自己:id 要 flush 後才拿得到
+        template.root_prompt_id = template.prompt_id
+        db.flush()
+    db.refresh(template)
 
-    return prompt_template
+    return template

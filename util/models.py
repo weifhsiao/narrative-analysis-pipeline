@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase, relationship
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, UniqueConstraint
 from datetime import datetime
 
 
@@ -29,13 +29,23 @@ class NovelLog(Base):
 
 
 class PromptTemplate(Base):
+    """prompt 模板,append-only:改 prompt 一律新增一版,舊版不動(所以沒有 updated_at)。
+
+    同一支 prompt 的各版以 root_prompt_id 串起(= v1 的 prompt_id,v1 指自己),
+    最新版 = 該 root 的 max(version)。prompt_execution.prompt_id 指到的是「那一版」。
+    prompt_name 只當對外入口(pipeline 常數、import 對應 .txt 檔名),同一支各版一致。
+    """
+
     __tablename__ = "prompt_template"
+    __table_args__ = (UniqueConstraint("root_prompt_id", "version"),)
     prompt_id = Column(Integer, primary_key=True, autoincrement=True)
-    prompt_name = Column(String)
+    root_prompt_id = Column(Integer, ForeignKey("prompt_template.prompt_id"))
+    version = Column(Integer, nullable=False, default=1)
+    prompt_name = Column(String, nullable=False)
     system_instruction = Column(String)
     prompt = Column(String)
+    max_length = Column(Integer)  # eval 字數上限,隨版本走;None = 未設定
     created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     prompt_executions = relationship("PromptExecution")
 
@@ -62,6 +72,15 @@ class PromptExecution(Base):
     end_time = Column(DateTime)
     result_code = Column(String)
     result_content = Column(String)
+    # 快照:填完 context 的 system / prompt;run 參數標籤(<log_content>)保持模板原樣,
+    # log 由 run range 重建。context 事後可改,這裡記的是當輪實際用到的內容。
+    system_snapshot = Column(String)
+    prompt_snapshot = Column(String)
+    # AI 用量:provider 中立語意,由各 AIClient 換算(見 util/ai_client.TokenUsage)
+    model = Column(String)
+    input_tokens = Column(Integer)
+    output_tokens = Column(Integer)
+    thinking_tokens = Column(Integer)
 
     parent = relationship("PromptExecution", remote_side=[prompt_exec_id])
 

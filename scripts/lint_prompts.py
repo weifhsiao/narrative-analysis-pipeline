@@ -1,4 +1,5 @@
-"""掃 prompts/*.txt 的填空標籤,跑 pipeline 之前先抓出對不上的地方。
+"""掃 DB 裡各支 prompt 最新版的填空標籤,跑 pipeline 之前先抓出對不上的地方(手動全面體檢)。
+存 prompt(import_prompts)與 pipeline 開跑前都會自動 lint;這支用在 context 端改動後想整體檢查時。
 用法:
     python -m scripts.lint_prompts                  # 全域:標籤 ↔ run 參數 / DB context_type
     python -m scripts.lint_prompts --character 2    # 加查該角色缺哪些 prompt 會用到的 type

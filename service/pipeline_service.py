@@ -1,8 +1,8 @@
 import os
 import time
 from datetime import datetime
-from util.file_util import write_debug_file, write_response
-from util.ai_client import get_client, Attachment, AIBlockedError
+from util.file_util import write_response
+from util.ai_client import get_client, Attachment, AIBlockedError, TokenUsage
 from util.models import PromptExecution
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
@@ -27,29 +27,26 @@ def _run_prompt(
     print(
         f"prompt=[{prompt_name}]  | model=[{ai_model}] | preview=[{preview}] | start."
     )
-    debug_path = None
+    rendered = None
+    usage = None
     try:
-        system, prompt = load_prompt(prompt_name, db, character_id, run_params)
-        attachment_info = "".join(
-            f"\n[attachment] {a.filename or '(unnamed)'} | {a.mime_type} | {len(a.data)} bytes"
-            for a in (attachments or [])
-        )
-        debug_path = write_debug_file(
-            f"{'='*10}{prompt_name} ai_model:[{ai_model}]{'='*10}\n\n system_instruction:[{system}]\n\n{prompt}{attachment_info}\n\n{'='*10}{prompt_name} end{'='*10}\n\n",
-            timestamp,
-            f"{prompt_name}",
-        )
+        rendered = load_prompt(prompt_name, db, character_id, run_params)
+        # log 夾檔只給模板裡有 <log_content> 的 prompt:標籤就是開關,同 context 原則
+        if "log_content" not in rendered.used_run_params:
+            attachments = None
         if preview:
             code, content = "PREVIEW", None
         else:
-            response = get_client().generate(prompt, system, attachments=attachments)
-            write_response(response, timestamp, f"{prompt_name}")
-            code, content = "SUCCESS", response
+            result = get_client().generate(
+                rendered.prompt, rendered.system, attachments=attachments
+            )
+            write_response(result.text, timestamp, f"{prompt_name}")
+            code, content, usage = "SUCCESS", result.text, result.usage
     except AIBlockedError as e:
         # 200 but no usable text (content/safety block). Store the real reason,
         # not a downstream error. generate() raises before write_response, so no
-        # empty response file is written.
-        code, content = "BLOCKED", str(e)
+        # empty response file is written. Blocked input is usually still billed.
+        code, content, usage = "BLOCKED", str(e), e.usage
     except Exception as e:
         # Everything else: API errors (4xx/5xx), network issues, bugs.
         # str(APIError) already includes the HTTP code, e.g. "400 INVALID_ARGUMENT...".
@@ -67,19 +64,45 @@ def _run_prompt(
         "end_time": end_time,
         "result_code": code,
         "result_content": content,
-        "debug_path": debug_path,
+        "rendered": rendered,
+        "usage": usage,
+        "attachments": attachments if rendered else None,
     }
 
 
 def _to_prompt_execution(result: dict, run_id: int) -> PromptExecution:
+    rendered = result["rendered"]
+    usage = result["usage"] or TokenUsage()
     return PromptExecution(
         run_id=run_id,
-        prompt_id=None,  # prompt_template啟用後加入
+        prompt_id=rendered.prompt_id if rendered else None,
         start_time=result["start_time"],
         end_time=result["end_time"],
         result_code=result["result_code"],
         result_content=result["result_content"],
+        system_snapshot=rendered.system_snapshot if rendered else None,
+        prompt_snapshot=rendered.prompt_snapshot if rendered else None,
+        model=usage.model,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        thinking_tokens=usage.thinking_tokens,
     )
+
+
+def _to_preview(result: dict) -> dict:
+    """preview 回傳實際會送出的內容(含 log),不寫檔、不入庫。"""
+    rendered = result["rendered"]
+    return {
+        "prompt_name": result["prompt_name"],
+        "prompt_id": rendered.prompt_id if rendered else None,
+        "system": rendered.system if rendered else None,
+        "prompt": rendered.prompt if rendered else None,
+        "attachments": [
+            f"{a.filename or '(unnamed)'} | {a.mime_type} | {len(a.data)} bytes"
+            for a in result["attachments"] or []
+        ],
+        "error": result["result_content"] if result["result_code"] == "ERROR" else None,
+    }
 
 
 def run_pipeline(
@@ -97,9 +120,12 @@ def run_pipeline(
     timestamp = str(int(time.time()))
     results = []
 
-    # preflight lint:只看這次會跑的 prompt;ERROR 中止(不組 prompt、不打 AI),WARN 印出繼續
+    # preflight lint:只看這次會跑的 prompt(DB 缺也算 ERROR);ERROR 中止(不組 prompt、不打 AI),
+    # WARN 印出繼續。存 prompt 時已 lint 過,這裡擋的是 context 端改名/停用 type 造成的對不上。
     issues = [
-        i for i in lint_prompts(db, character_id) if i.prompt in PIPELINE_PROMPTS
+        i
+        for i in lint_prompts(db, character_id, PIPELINE_PROMPTS)
+        if i.level != "INFO"
     ]
     for i in issues:
         print(f"[run_pipeline] lint {i.level} | {i.prompt} | {i.message}")
@@ -161,11 +187,8 @@ def run_pipeline(
     )
 
     if preview:
-        # 只組 prompt + 寫 debug 檔，不打 AI、不入庫
-        return {
-            "timestamp": timestamp,
-            "files": [str(r["debug_path"]) for r in results if r["debug_path"]],
-        }
+        # 只組 prompt 回傳內容，不打 AI、不寫檔、不入庫
+        return {"prompts": [_to_preview(r) for r in results]}
 
     executions = [_to_prompt_execution(r, run_id) for r in results]
     return insert_prompt_executions(db, executions)

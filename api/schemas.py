@@ -54,6 +54,12 @@ class PromptExecResponse(BaseModel):
     end_time: datetime | None
     result_code: str | None
     result_content: str | None
+    system_snapshot: str | None
+    prompt_snapshot: str | None
+    model: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    thinking_tokens: int | None
 
     model_config = ConfigDict(from_attributes=True)  # 讓 Pydantic 讀 ORM 物件
 
