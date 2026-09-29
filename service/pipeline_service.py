@@ -2,7 +2,7 @@ import os
 import time
 from datetime import datetime
 from util.file_util import write_response
-from util.ai_client import get_client, Attachment, AIBlockedError, TokenUsage
+from util.ai_client import get_client, configured_model, Attachment, AIBlockedError, TokenUsage
 from util.models import PromptExecution
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
@@ -22,7 +22,7 @@ def _run_prompt(
     preview: bool = False,
     attachments: list[Attachment] | None = None,
 ) -> dict:
-    ai_model = os.getenv("GEMINI_MODEL", "UNKNOWN")
+    ai_model = configured_model()
     start_time = datetime.now()
     print(
         f"prompt=[{prompt_name}]  | model=[{ai_model}] | preview=[{preview}] | start."

@@ -4,6 +4,13 @@ from dataclasses import dataclass
 from google import genai
 from google.genai import types, errors
 
+DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+
+
+def configured_model() -> str:
+    """設定要用的模型(.env GEMINI_MODEL)。DB 的 model 欄存的是 API 實際回報的版本,不是這個。"""
+    return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+
 
 @dataclass
 class Attachment:
@@ -66,7 +73,7 @@ class GeminiClient(AIClient):
     def __init__(self):
         super().__init__()
         gemini_api_key = os.getenv("GEMINI_API_KEY", "")
-        self.model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+        self.model = configured_model()
         self.client = genai.Client(api_key=gemini_api_key)
 
     def generate(
