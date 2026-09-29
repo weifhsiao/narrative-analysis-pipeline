@@ -22,23 +22,4 @@ def create_character(db: Session, name: str) -> Character:
     return character
 
 
-# update
-def update_character(db: Session, character_id: int, name: str) -> Character | None:
-    ## ORM寫法先查再改
-
-    character = db.execute(
-        select(Character).where(Character.character_id == character_id)
-    ).scalar_one_or_none()
-
-    if character is None:
-        return None
-
-    ## 用execute select出來的物件會被自動追蹤，所以這邊直接改->flush就可以了（session更新還沒commit）
-    character.name = name
-    db.flush()
-    db.refresh(character)
-
-    return character
-
-
 # def delete_character(db:Session,character_id):
