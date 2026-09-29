@@ -97,13 +97,14 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. 初始化範例資料(範例角色、分析批次、四筆預先產生的分析結果;可重複執行)
+# 2. 初始化範例資料(範例角色與虛構 context、分析批次、四筆預先產生的分析結果;DB 只有 seed 資料時可重複執行)
 python -m scripts.seed
 
-# 3. 把 prompt 匯入 DB(--force:全新範例 DB 還沒有角色 context,
-#    context 標籤對不上會被 lint 擋下)
-python -m scripts.import_prompts --force
+# 3. 把 prompt 匯入 DB
+python -m scripts.import_prompts
 ```
+
+`scripts.seed` 會先**清空** character / run / prompt_execution / novel_log / character_context 再重建範例。DB 裡若有 seed 以外的資料(其他角色、匯入過的 log——包括下方的範例 log、自己跑出的結果、改過或停用的 context),會直接中止、不動任何資料;確定要清掉才加 `--yes`。
 
 既有的 `data/novel.db`(prompt 版本化之前建立)升級:先跑 `python -m scripts.migrate_prompt_template --write`(會先備份),再跑 `python -m scripts.import_prompts`。
 
@@ -144,9 +145,11 @@ uvicorn api.app:app --reload
 
 `POST /runs/{run_id}/preview`——對分析批次組出 pipeline 的 prompt,直接回傳實際會送出的內容(system instruction 與 prompt 分離、背景 context 與 log 已填入;`LOG_INPUT_MODE=attachment` 時 prompt 裡是指向附件的提示，preview 只列出附件名稱與大小、不含 log 本文),**不呼叫 Gemini、不寫檔、不寫入資料庫**。與下方 `execute` 走同一條 pipeline,差別只在 preview 不打 API、不入庫，因此免金鑰即可檢視 prompt 組裝結果。
 
+跑完 Quickstart 即可直接 `POST /runs/1/preview`(seed 附有 relationship / scenario / timeline 的虛構範例 context)。想連劇情 log 一起看到，先做上方的「匯入範例 log」;否則 `<log_content>` 會是空的。
+
 ### 選用：自行重跑生成(需 Gemini API key)
 
-上方附帶的分析結果即由此步驟產生。要自己重新生成需自備金鑰(注意：範例角色 context 未隨附本 repo，重跑輸出會與附帶結果不同，完整可重現見 Roadmap)：
+上方附帶的分析結果即由此步驟產生。要自己重新生成需自備金鑰(注意：附帶結果產生時用的角色 context 與 seed 提供的虛構範例 context 不同，重跑輸出會與附帶結果不同，完整可重現見 Roadmap)：
 
 ```bash
 cp .env.example .env   # 填入 GEMINI_API_KEY

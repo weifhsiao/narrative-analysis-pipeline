@@ -97,13 +97,15 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Initialize sample data (sample character, analysis batch, four pre-generated results; idempotent)
+# 2. Initialize sample data (sample character with fictional context, analysis batch,
+#    four pre-generated results; re-runnable while the DB holds only seed data)
 python -m scripts.seed
 
-# 3. Import prompts into the DB (--force: the fresh sample DB has no character context yet,
-#    so context tags can't be matched and would otherwise block the save)
-python -m scripts.import_prompts --force
+# 3. Import prompts into the DB
+python -m scripts.import_prompts
 ```
+
+`scripts.seed` **wipes** the character / run / prompt_execution / novel_log / character_context tables before re-creating the sample. If the DB holds anything seed didn't create (another character, imported logs — including the sample log below — your own results, edited or deactivated context), it aborts without touching anything; add `--yes` only if you really want that data wiped.
 
 Upgrading an existing `data/novel.db` from before prompt versioning: run `python -m scripts.migrate_prompt_template --write` (backs up first), then `python -m scripts.import_prompts`.
 
@@ -144,9 +146,11 @@ To see the prompt the pipeline actually assembles without calling the LLM, use p
 
 `POST /runs/{run_id}/preview` — assembles the pipeline prompts for the analysis batch and returns exactly what would be sent (system instruction and prompt separated, background context and log filled in; with `LOG_INPUT_MODE=attachment` the prompt carries a pointer to the attached file instead, and preview lists the attachment's name and size rather than the log text). It **does not call Gemini, write files, or write to the database**. It runs the same pipeline as `execute` below, differing only in that preview doesn't call the API or persist — so you can inspect the assembled prompt with no key.
 
+`POST /runs/1/preview` works right after the Quickstart (the seed ships fictional sample context for the relationship / scenario / timeline tags). Import the sample log first (above) if you want the story log filled in as well; otherwise `<log_content>` is empty.
+
 ### Optional: re-run generation yourself (Gemini API key required)
 
-The bundled analysis results were produced by this step. Re-generating them yourself requires your own key (note: the sample character context is not shipped with this repo, so a rerun's output will differ from the bundled results; full reproducibility is in the Roadmap):
+The bundled analysis results were produced by this step. Re-generating them yourself requires your own key (note: the bundled results were generated with different character context than the fictional sample context seed provides, so a rerun's output will differ from them; full reproducibility is in the Roadmap):
 
 ```bash
 cp .env.example .env   # fill in GEMINI_API_KEY
