@@ -1,5 +1,4 @@
 import re
-from collections import Counter
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -19,15 +18,61 @@ _TAG_RE = re.compile(r"<(\w+)>.*?</\1>", re.DOTALL)
 # run 參數名：pipeline 傳進 load_prompt 的 run_params key 必須在這裡，lint 靠它判斷
 RUN_PARAM_NAMES = frozenset({"log_content"})
 
-# lint 用：開/閉標籤分開抓（才抓得到不成對）、舊式 {name} 佔位、填空標籤名的字元規則
-_OPEN_RE = re.compile(r"<(\w+)>")
-_CLOSE_RE = re.compile(r"</(\w+)>")
+# lint 用：任一開/閉標籤、舊式 {name} 佔位、填空標籤名的字元規則
+_ANY_TAG_RE = re.compile(r"</?(\w+)>")
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 _SLOT_RE = re.compile(CONTEXT_TYPE_PATTERN)
 
 # prompt 檔(prompts/*.txt)的區段標頭:只認獨立成行
 _SYSTEM_HEADER_RE = re.compile(r"^# system instruction[ \t]*$", re.MULTILINE)
 _PROMPT_HEADER_RE = re.compile(r"^# prompt[ \t]*$", re.MULTILINE)
+
+
+@dataclass
+class _TagScan:
+    """引擎怎麼看一段文字裡的標籤——替換、lint、夾檔判斷都讀這一份,不各自重算。"""
+
+    top: list[re.Match]  # 引擎會逐段處理的最外層 <T>...</T>(由左而右、不重疊)
+    nested: dict[str, str]  # 包在某個最外層段落裡、自成一對的填空標籤 → 外層標籤名
+    stray: set[str]  # 落在所有最外層段落外、沒配成對的填空標籤名
+
+    @property
+    def filled_names(self) -> set[str]:
+        """最外層、名稱合規的標籤:引擎實際會去找內容填的那些。"""
+        return {m.group(1) for m in self.top if _SLOT_RE.fullmatch(m.group(1))}
+
+
+def _inner(m: re.Match) -> str:
+    """_TAG_RE 比對到的 <T>...</T> 去掉開閉標籤後的內文。"""
+    n = len(m.group(1))
+    return m.group(0)[n + 2 : -(n + 3)]
+
+
+def _paired_slots(text: str):
+    """text 裡(任意深度)自成一對的填空標籤名。"""
+    for m in _TAG_RE.finditer(text):
+        if _SLOT_RE.fullmatch(m.group(1)):
+            yield m.group(1)
+        yield from _paired_slots(_inner(m))
+
+
+def _scan_tags(text: str) -> _TagScan:
+    """用 _TAG_RE 決定引擎會處理哪些標籤:由左而右找「開標籤…最近的同名閉標籤」,
+    找到就整段處理、不往內看。所以順序錯的開閉配不起來,
+    結構標籤內文順帶提到的標籤名也不影響外面。這是唯一的判定來源。"""
+    top = list(_TAG_RE.finditer(text))
+    nested: dict[str, str] = {}
+    for m in top:
+        for t in _paired_slots(_inner(m)):
+            nested.setdefault(t, m.group(1))
+    spans = [(m.start(), m.end()) for m in top]
+    stray = {
+        m.group(1)
+        for m in _ANY_TAG_RE.finditer(text)
+        if _SLOT_RE.fullmatch(m.group(1))
+        and not any(a <= m.start() < b for a, b in spans)
+    }
+    return _TagScan(top=top, nested=nested, stray=stray)
 
 
 def _render(
@@ -68,7 +113,16 @@ def _render(
 
         return repl
 
-    return _TAG_RE.sub(make_repl(False), text), _TAG_RE.sub(make_repl(True), text)
+    top = _scan_tags(text).top
+
+    def build(repl) -> str:
+        out, pos = [], 0
+        for m in top:
+            out += [text[pos : m.start()], repl(m)]
+            pos = m.end()
+        return "".join(out) + text[pos:]
+
+    return build(make_repl(False)), build(make_repl(True))
 
 
 def _fill_tags(
@@ -117,8 +171,8 @@ def load_prompt(
     context_types = list_context_types(db)
     system_snapshot, system_sent = _render(system, db, character_id, run_params, context_types)
     prompt_snapshot, prompt_sent = _render(prompt, db, character_id, run_params, context_types)
-    # 分段掃,跟 _render 各段各自填的方式一致;只算最外層、真的會被填的標籤
-    tags = {m.group(1) for text in (system, prompt) for m in _TAG_RE.finditer(text)}
+    # 分段看,跟 _render 各段各自填的方式一致;只算引擎真的會處理的最外層標籤
+    tags = {m.group(1) for text in (system, prompt) for m in _scan_tags(text).top}
 
     return RenderedPrompt(
         prompt_id=template.prompt_id,
@@ -134,12 +188,13 @@ def parse_prompt_file(text: str) -> tuple[str, str]:
     """prompts/*.txt → (system, prompt)。
 
     以獨立成行的 `# prompt` 分段:之前是 system(去掉 `# system instruction` 標頭行)、
-    之後是 prompt;沒有 `# prompt` 行就整份當 prompt。標頭只認整行,
+    之後是 prompt;沒有 `# prompt` 行就整份當 prompt(標頭行一律不送出)。標頭只認整行,
     內文出現 `# prompts` 之類的字串不會被誤切。
     """
+    text = text.lstrip("\ufeff")  # BOM 會讓第一行標頭比不到
     parts = _PROMPT_HEADER_RE.split(text, maxsplit=1)
     if len(parts) == 1:
-        return "", text.strip()
+        return "", _SYSTEM_HEADER_RE.sub("", text, count=1).strip()
     head, body = parts
     return _SYSTEM_HEADER_RE.sub("", head, count=1).strip(), body.strip()
 
@@ -170,30 +225,22 @@ def _lint_text(
     issues: list[LintIssue] = []
     used_types: set[str] = set()
 
-    opens = Counter(t for t in _OPEN_RE.findall(text) if _SLOT_RE.fullmatch(t))
-    closes = Counter(t for t in _CLOSE_RE.findall(text) if _SLOT_RE.fullmatch(t))
+    # 判定一律來自 _scan_tags(與引擎替換同一份):段落內只被「提到」而沒配對的名稱視為內文
+    scan = _scan_tags(text)
+    filled, nested, stray = scan.filled_names, scan.nested, scan.stray
 
-    # 引擎只看最外層的 <T>...</T>:外層不認得就整段原樣保留、不往內掃,
-    # 所以包在其他標籤裡的填空標籤永遠不會被填
-    nested: dict[str, str] = {}
-    for m in _TAG_RE.finditer(text):
-        inner = m.group(0)[len(m.group(1)) + 2 : -(len(m.group(1)) + 3)]
-        for t in _OPEN_RE.findall(inner):
-            if _SLOT_RE.fullmatch(t):
-                nested.setdefault(t, m.group(1))
-
-    for tag in sorted(opens.keys() | closes.keys()):
-        if opens[tag] != closes[tag]:
-            issues.append(LintIssue(
-                "ERROR", name,
-                f"<{tag}> 開閉不成對(開 {opens[tag]}、閉 {closes[tag]}),引擎不會填",
-            ))
-            continue
+    for tag in sorted(filled | nested.keys() | stray):
         if tag in nested:
             issues.append(LintIssue(
                 "ERROR", name,
                 f"<{tag}> 包在 <{nested[tag]}> 裡面,引擎不會填(填空標籤要放在其他標籤外;"
                 f"範圍從第一個 <{nested[tag]}> 算起,內文提到這個標籤名也算)",
+            ))
+            continue
+        if tag not in filled:
+            issues.append(LintIssue(
+                "ERROR", name,
+                f"<{tag}> 開閉不成對或閉標籤在開標籤之前,引擎不會填",
             ))
             continue
         if tag in RUN_PARAM_NAMES:

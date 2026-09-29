@@ -88,6 +88,16 @@ def test_save_force_stores_despite_lint_error(db):
     assert [i.level for i in issues] == ["ERROR"]  # fresh DB 沒有 context,type 對不上
 
 
+def test_save_lints_system_and_prompt_separately(db):
+    # 接起來掃的話 <log_content> 會被誤判成包在 <參考範例> 裡而擋下
+    template, issues = save_prompt(
+        db, "recap", "請依照 <參考範例> 的格式", "<log_content></log_content>\n<參考範例>x</參考範例>"
+    )
+
+    assert template is not None
+    assert issues == []
+
+
 def test_save_returns_warnings_without_blocking(db):
     template, issues = save_prompt(db, "summary", "", "{log_content}")
 
@@ -124,6 +134,14 @@ def test_parse_system_header_text_in_body_is_kept():
     text = "說明 # system instruction 字樣\n# prompt\nP"
 
     assert parse_prompt_file(text) == ("說明 # system instruction 字樣", "P")
+
+
+def test_parse_system_header_alone_is_not_sent():
+    assert parse_prompt_file("# system instruction\n內容") == ("", "內容")
+
+
+def test_parse_strips_bom():
+    assert parse_prompt_file("\ufeff# system instruction\nS\n# prompt\nP") == ("S", "P")
 
 
 def test_parse_prompt_header_alone_is_not_sent():
