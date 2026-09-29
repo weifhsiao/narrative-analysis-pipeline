@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from pathlib import Path
 
-# engine 在 import 當下建立,入口(API/script)不一定已 load .env,這裡自己 load(不覆蓋既有環境變數)
+# .env 只在這裡 load:engine 在 import 當下建立,而 API/script 入口都會經過 db_util(不覆蓋既有環境變數)
 load_dotenv()
 
 DB_DIR = Path("./data")

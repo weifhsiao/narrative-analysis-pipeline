@@ -11,9 +11,6 @@ DB 裡若有 seed 以外的資料(例:真實角色、匯入過的 log、自己�
 import argparse
 import sys
 
-from dotenv import load_dotenv
-
-load_dotenv()
 from pathlib import Path
 from sqlalchemy import inspect
 from sqlalchemy.exc import OperationalError
