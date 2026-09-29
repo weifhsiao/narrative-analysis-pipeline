@@ -33,11 +33,9 @@ def main():
     try:
         for path in sorted(PROMPTS_DIR.glob("*.txt")):
             name = path.stem
-            system, prompt, max_length = parse_prompt_file(path.read_text(encoding="utf-8"))
+            system, prompt = parse_prompt_file(path.read_text(encoding="utf-8"))
             try:
-                template, issues = save_prompt(
-                    db, name, system, prompt, max_length, force=args.force
-                )
+                template, issues = save_prompt(db, name, system, prompt, force=args.force)
             except PromptLintError as e:
                 failed += 1
                 print(f"[擋下] {name}")

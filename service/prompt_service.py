@@ -26,9 +26,8 @@ _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 _SLOT_RE = re.compile(CONTEXT_TYPE_PATTERN)
 
 # prompt 檔(prompts/*.txt)的區段標頭;max_length 為選填的單行設定
-_SYSTEM_HEADER = "# system instruction"
-_PROMPT_HEADER = "# prompt"
-_MAX_LENGTH_RE = re.compile(r"^# max_length:\s*(\d+)\s*\n?", re.MULTILINE)
+_SYSTEM_HEADER_RE = re.compile(r"^# system instruction[ \t]*$", re.MULTILINE)
+_PROMPT_HEADER_RE = re.compile(r"^# prompt[ \t]*$", re.MULTILINE)
 
 
 def _render(
@@ -130,25 +129,18 @@ def load_prompt(
     )
 
 
-def parse_prompt_file(text: str) -> tuple[str, str, int | None]:
-    """prompts/*.txt → (system, prompt, max_length)。
+def parse_prompt_file(text: str) -> tuple[str, str]:
+    """prompts/*.txt → (system, prompt)。
 
-    `# system instruction` / `# prompt` 分段(兩個標頭都有才切,否則整份當 prompt);
-    選填一行 `# max_length: N` 給 eval 字數上限,解析後從內文拿掉。
+    以獨立成行的 `# prompt` 分段:之前是 system(去掉 `# system instruction` 標頭行)、
+    之後是 prompt;沒有 `# prompt` 行就整份當 prompt。標頭只認整行,
+    內文出現 `# prompts` 之類的字串不會被誤切。
     """
-    max_length = None
-    m = _MAX_LENGTH_RE.search(text)
-    if m:
-        max_length = int(m.group(1))
-        text = _MAX_LENGTH_RE.sub("", text)
-
-    system, prompt = "", text.strip()
-    if _SYSTEM_HEADER in text and _PROMPT_HEADER in text:
-        head, body = text.split(_PROMPT_HEADER, 1)
-        system = head.replace(_SYSTEM_HEADER, "").strip()
-        prompt = body.strip()
-
-    return system, prompt, max_length
+    parts = _PROMPT_HEADER_RE.split(text, maxsplit=1)
+    if len(parts) == 1:
+        return "", text.strip()
+    head, body = parts
+    return _SYSTEM_HEADER_RE.sub("", head, count=1).strip(), body.strip()
 
 
 @dataclass
@@ -180,11 +172,26 @@ def _lint_text(
     opens = Counter(t for t in _OPEN_RE.findall(text) if _SLOT_RE.fullmatch(t))
     closes = Counter(t for t in _CLOSE_RE.findall(text) if _SLOT_RE.fullmatch(t))
 
+    # 引擎只看最外層的 <T>...</T>:外層不認得就整段原樣保留、不往內掃,
+    # 所以包在其他標籤裡的填空標籤永遠不會被填
+    nested: dict[str, str] = {}
+    for m in _TAG_RE.finditer(text):
+        inner = m.group(0)[len(m.group(1)) + 2 : -(len(m.group(1)) + 3)]
+        for t in _OPEN_RE.findall(inner):
+            if _SLOT_RE.fullmatch(t):
+                nested.setdefault(t, m.group(1))
+
     for tag in sorted(opens.keys() | closes.keys()):
         if opens[tag] != closes[tag]:
             issues.append(LintIssue(
                 "ERROR", name,
                 f"<{tag}> 開閉不成對(開 {opens[tag]}、閉 {closes[tag]}),引擎不會填",
+            ))
+            continue
+        if tag in nested:
+            issues.append(LintIssue(
+                "ERROR", name,
+                f"<{tag}> 包在 <{nested[tag]}> 裡面,引擎不會填(填空標籤要放在其他標籤外)",
             ))
             continue
         if tag in RUN_PARAM_NAMES:

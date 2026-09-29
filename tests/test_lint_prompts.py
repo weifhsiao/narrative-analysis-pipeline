@@ -77,6 +77,23 @@ def test_unused_type_is_info(db):
     assert "other" in message
 
 
+def test_slot_nested_in_structure_tag_is_error(db):
+    add_prompt(db, "recap", "<故事段落>\n<log_content>\n</log_content>\n</故事段落>")
+
+    [(level, prompt, message)] = _issues(db)
+    assert (level, prompt) == ("ERROR", "recap")
+    assert "<log_content> 包在 <故事段落> 裡面" in message
+
+
+def test_slot_nested_in_slot_is_error(db):
+    add_context(db, add_character(db), "relationship", "REL")
+    add_prompt(db, "summary", "<relationship><log_content></log_content></relationship>")
+
+    assert [(lv, m) for lv, _, m in _issues(db) if lv == "ERROR"] == [
+        ("ERROR", "<log_content> 包在 <relationship> 裡面,引擎不會填(填空標籤要放在其他標籤外)")
+    ]
+
+
 def test_chinese_structure_tags_are_ignored(db):
     add_prompt(db, "recap", "<格式>\n- 內容\n</格式><參考範例>")
 

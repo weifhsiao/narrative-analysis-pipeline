@@ -61,5 +61,5 @@ def add_prompt(db: Session, name: str, text: str) -> PromptTemplate:
     直接走 crud、不經 save_prompt 的 lint——才能放進「壞掉的」prompt，
     模擬 DB 內容與 context 對不上的情況（pipeline preflight 要擋的就是這種）。
     """
-    system, prompt, max_length = parse_prompt_file(text)
-    return create_prompt_version(db, name, system, prompt, max_length)
+    system, prompt = parse_prompt_file(text)
+    return create_prompt_version(db, name, system, prompt)
