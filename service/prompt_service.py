@@ -35,6 +35,7 @@ class _TagScan:
     top: list[re.Match]  # 引擎會逐段處理的最外層 <T>...</T>(由左而右、不重疊)
     nested: dict[str, str]  # 包在某個最外層段落裡、自成一對的填空標籤 → 外層標籤名
     stray: set[str]  # 落在所有最外層段落外、沒配成對的填空標籤名
+    swallowed: set[str]  # 會被填、但開閉之間原本有文字(會被整段換掉)的填空標籤名
 
     @property
     def filled_names(self) -> set[str]:
@@ -72,7 +73,12 @@ def _scan_tags(text: str) -> _TagScan:
         if _SLOT_RE.fullmatch(m.group(1))
         and not any(a <= m.start() < b for a, b in spans)
     }
-    return _TagScan(top=top, nested=nested, stray=stray)
+    # 引擎從第一個 <T> 配到最近的 </T> 整段換掉:中間若有文字(例:內文先提到 <T> 才是真的填空點),
+    # 那段文字送出時會消失
+    swallowed = {
+        m.group(1) for m in top if _SLOT_RE.fullmatch(m.group(1)) and _inner(m).strip()
+    }
+    return _TagScan(top=top, nested=nested, stray=stray, swallowed=swallowed)
 
 
 def _render(
@@ -227,7 +233,7 @@ def _lint_text(
 
     # 判定一律來自 _scan_tags(與引擎替換同一份):段落內只被「提到」而沒配對的名稱視為內文
     scan = _scan_tags(text)
-    filled, nested, stray = scan.filled_names, scan.nested, scan.stray
+    filled, nested, stray, swallowed = scan.filled_names, scan.nested, scan.stray, scan.swallowed
 
     for tag in sorted(filled | nested.keys() | stray):
         if tag in nested:
@@ -241,6 +247,18 @@ def _lint_text(
             issues.append(LintIssue(
                 "ERROR", name,
                 f"<{tag}> 開閉不成對或閉標籤在開標籤之前,引擎不會填",
+            ))
+            continue
+        if tag in swallowed:
+            issues.append(LintIssue(
+                "ERROR", name,
+                f"<{tag}> 開閉之間有文字,會被整段換掉(範圍從第一個 <{tag}> 算起,內文提到也算)",
+            ))
+            continue
+        if tag in stray:
+            issues.append(LintIssue(
+                "ERROR", name,
+                f"<{tag}> 之外另有未配對的 <{tag}>,會原樣送出",
             ))
             continue
         if tag in RUN_PARAM_NAMES:
