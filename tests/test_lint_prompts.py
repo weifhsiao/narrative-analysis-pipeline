@@ -89,9 +89,44 @@ def test_slot_nested_in_slot_is_error(db):
     add_context(db, add_character(db), "relationship", "REL")
     add_prompt(db, "summary", "<relationship><log_content></log_content></relationship>")
 
-    assert [(lv, m) for lv, _, m in _issues(db) if lv == "ERROR"] == [
-        ("ERROR", "<log_content> 包在 <relationship> 裡面,引擎不會填(填空標籤要放在其他標籤外)")
+    [(level, _, message)] = [i for i in _issues(db) if i[0] == "ERROR"]
+    assert "<log_content> 包在 <relationship> 裡面" in message
+
+
+def test_context_slot_nested_in_structure_tag_is_error(db):
+    add_context(db, add_character(db), "relationship", "REL")
+    add_prompt(db, "summary", "<甲>\n<relationship>\n</relationship>\n</甲>")
+
+    errors = [m for lv, _, m in _issues(db) if lv == "ERROR"]
+    assert len(errors) == 1 and "<relationship> 包在 <甲> 裡面" in errors[0]
+
+
+def test_slot_split_across_system_and_prompt_is_error(db):
+    # 引擎 system / prompt 各自填：開在 system、閉在 prompt 兩邊都填不到
+    add_prompt(db, "summary", "# system instruction\n<log_content>\n# prompt\n</log_content>")
+
+    messages = [m for lv, _, m in _issues(db) if lv == "ERROR"]
+    assert messages == [
+        "<log_content> 開閉不成對(開 1、閉 0),引擎不會填",
+        "<log_content> 開閉不成對(開 0、閉 1),引擎不會填",
     ]
+
+
+def test_structure_tag_mentioned_in_system_does_not_affect_prompt(db):
+    add_prompt(
+        db,
+        "recap",
+        "# system instruction\n請依照 <參考範例> 的格式輸出\n# prompt\n"
+        "<log_content></log_content>\n<參考範例>\n範例\n</參考範例>",
+    )
+
+    assert _issues(db) == []
+
+
+def test_same_issue_in_both_sections_reported_once(db):
+    add_prompt(db, "summary", "# system instruction\n{log_content}\n# prompt\n{log_content}")
+
+    assert _levels(db) == [("WARN", "summary")]
 
 
 def test_chinese_structure_tags_are_ignored(db):
