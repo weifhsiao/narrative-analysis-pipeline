@@ -5,8 +5,9 @@ from util.paths import DATA_DIR
 
 DB_DIR = DATA_DIR
 DB_DIR.mkdir(exist_ok=True)
+DB_PATH = DB_DIR / "novel.db"
 
-engine = create_engine(f"sqlite:///{DB_DIR}/novel.db", echo=config.sql_echo())
+engine = create_engine(f"sqlite:///{DB_PATH}", echo=config.sql_echo())
 SessionLocal = sessionmaker(engine)
 
 

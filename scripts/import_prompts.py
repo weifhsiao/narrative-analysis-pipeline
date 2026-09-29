@@ -13,10 +13,10 @@ import argparse
 import sys
 
 from util.db_util import SessionLocal, quiet_sql
-from util.file_util import BASE_DIR
+from util.paths import REPO_DIR
 from service.prompt_service import PromptLintError, parse_prompt_file, save_prompt
 
-PROMPTS_DIR = BASE_DIR / "prompts"
+PROMPTS_DIR = REPO_DIR / "prompts"
 
 
 def main():

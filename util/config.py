@@ -7,7 +7,10 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv()  # 不覆蓋既有環境變數
+from util.paths import REPO_DIR
+
+# 固定讀 repo 根目錄的 .env,不隨 cwd 找;不覆蓋既有環境變數
+load_dotenv(REPO_DIR / ".env")
 
 DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
 
