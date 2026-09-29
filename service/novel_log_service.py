@@ -1,9 +1,5 @@
 from datetime import datetime
-from util.parse_log_util import (
-    is_new_turn_header,
-    build_novel_logs,
-    parse_log_header_line,
-)
+from util.parse_log_util import build_novel_logs, parse_log_header_line
 from sqlalchemy.orm import Session
 from util.db_util import SessionLocal
 from util.crud.novel_log import insert_novel_logs, get_novel_logs
@@ -29,7 +25,7 @@ def parse_and_import(
     seen_first_header = False
 
     # 迴圈讀行
-    for line in content.splitlines():
+    for line_no, line in enumerate(content.splitlines(), start=1):
         # strip
         clean_line = line.strip()
 
@@ -37,7 +33,8 @@ def parse_and_import(
             continue
 
         # 確認是否屬於第一行標籤
-        if is_new_turn_header(line):
+        header = parse_log_header_line(clean_line, line_no)
+        if header is not None:
             seen_first_header = True
             if block["sender"] is not None:
                 # 先把前一個block儲存清空
@@ -48,7 +45,7 @@ def parse_and_import(
                 user_content_list = []
 
             # speaker = user -> 存sender,content,raw_log_time 進暫存區
-            raw_time, sender, remaining_content = parse_log_header_line(clean_line)
+            raw_time, sender, remaining_content = header
 
             if user_name == sender:
                 is_user_turn = True
