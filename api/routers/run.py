@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from api.schemas import RunCreate, RunResponse, PromptExecResponse
 from sqlalchemy.orm import Session
+from api.errors import or_404
 from util.db_util import get_db
 from util.crud.run import create_run, get_run, get_runs_by_character
 from util.crud.prompt import get_prompt_executions_by_run
@@ -39,53 +40,31 @@ def create(run_create: RunCreate, db: Session = Depends(get_db)):
     return run
 
 
-@router.post("/{run_id}/execute")
-def execute(run_id: int, db: Session = Depends(get_db)):
-    # 先查Run是否存在
-    run = get_run(db, run_id)
-
-    if run is None:
-        raise HTTPException(status_code=404, detail=f"Run id [{run_id}] not found.")
-
-    character_id = run.character_id
-    range_start = run.range_start
-    range_end = run.range_end
-    try:
-        insert_cnt = run_pipeline(db, run_id, character_id, range_start, range_end)
-    except PromptLintError as e:
-        raise _lint_failed(e)
-
-    return {"insert_cnt": insert_cnt}
-
-
-@router.post("/{run_id}/preview")
-def preview(run_id: int, db: Session = Depends(get_db)):
-    # 只組 prompt 並回傳實際會送出的內容，不打 AI、不寫檔、不入庫
-    run = get_run(db, run_id)
-
-    if run is None:
-        raise HTTPException(status_code=404, detail=f"Run id [{run_id}] not found.")
-
+def _run_pipeline(db: Session, run_id: int, preview: bool):
+    # execute / preview 共用:查 run → 跑 pipeline → lint 失敗轉 422
+    run = or_404(get_run(db, run_id), "Run", run_id)
     try:
         return run_pipeline(
-            db,
-            run_id,
-            run.character_id,
-            run.range_start,
-            run.range_end,
-            preview=True,
+            db, run_id, run.character_id, run.range_start, run.range_end, preview=preview
         )
     except PromptLintError as e:
         raise _lint_failed(e)
 
 
+@router.post("/{run_id}/execute")
+def execute(run_id: int, db: Session = Depends(get_db)):
+    return {"insert_cnt": _run_pipeline(db, run_id, preview=False)}
+
+
+@router.post("/{run_id}/preview")
+def preview(run_id: int, db: Session = Depends(get_db)):
+    # 只組 prompt 並回傳實際會送出的內容，不打 AI、不寫檔、不入庫
+    return _run_pipeline(db, run_id, preview=True)
+
+
 @router.get("/{run_id}", response_model=RunResponse)
 def get_run_by_id(run_id: int, db: Session = Depends(get_db)):
-    run = get_run(db, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail=f"Run id [{run_id}] not found.")
-
-    return run
+    return or_404(get_run(db, run_id), "Run", run_id)
 
 
 @router.get("/", response_model=list[RunResponse])
