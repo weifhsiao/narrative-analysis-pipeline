@@ -29,9 +29,13 @@ def parse_log_header_line(line: str, line_no: int | None = None):
     sender_match = header_sender_reg.match(line, prefix.end())
     sender = sender_match.group(1).strip() if sender_match else ""
     # 全形冒號當分隔時,[^:]+ 會一路吃到狀態欄時間的半形冒號(｜16:40｜),發話者變成亂碼卻不報錯
-    if not sender or "：" in sender:
+    if "：" in sender:
         raise LogFormatError(
-            f"{where}是標題行,但找不到「發話者:」(需半形冒號,全形「：」不算):{line[:60]}"
+            f"{where}發話者後面用了全形冒號「：」,請改成半形「:」:{line[:60]}"
+        )
+    if not sender:
+        raise LogFormatError(
+            f"{where}開頭有時間戳,但後面缺「發話者:」(例:[時間] 名字: 內容):{line[:60]}"
         )
 
     remaining_content = line[sender_match.end() :].strip()
