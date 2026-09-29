@@ -1,4 +1,6 @@
 """lint_prompts 細部案例：來源是 DB 裡各支 prompt 的最新版。"""
+import pytest
+
 from service.prompt_service import lint_prompts
 from tests.helpers import add_character, add_context, add_prompt
 
@@ -105,11 +107,44 @@ def test_slot_split_across_system_and_prompt_is_error(db):
     # 引擎 system / prompt 各自填：開在 system、閉在 prompt 兩邊都填不到
     add_prompt(db, "summary", "# system instruction\n<log_content>\n# prompt\n</log_content>")
 
-    messages = [m for lv, _, m in _issues(db) if lv == "ERROR"]
-    assert messages == [
-        "<log_content> 開閉不成對(開 1、閉 0),引擎不會填",
-        "<log_content> 開閉不成對(開 0、閉 1),引擎不會填",
-    ]
+    [(level, _, message)] = _issues(db)  # 兩段訊息相同,只報一次
+    assert level == "ERROR"
+    assert "不成對" in message
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "</log_content>\n<log_content>",  # 數量對得上,但閉在開之前
+        "<甲></log_content></甲>\n<log_content>",  # 閉標籤藏在結構標籤裡
+    ],
+    ids=["close-before-open", "close-hidden-in-structure"],
+)
+def test_counts_match_but_engine_cannot_pair_is_error(db, text):
+    add_prompt(db, "summary", text)
+
+    assert _levels(db) == [("ERROR", "summary")]
+
+
+def test_slot_name_mentioned_inside_structure_tag_is_fine(db):
+    # 引擎把 <格式>…</格式> 整段跳過,裡面提到 <log_content> 只是內文
+    add_prompt(db, "recap", "<格式>把 <log_content> 摘要</格式>\n<log_content></log_content>")
+
+    assert _issues(db) == []
+
+
+def test_slot_name_only_mentioned_inside_structure_tag_is_fine(db):
+    # 只在結構標籤內文提到、外面沒有真的填空標籤:是內文,不是壞掉的填空標籤
+    add_prompt(db, "recap", "<格式>把 <log_content> 摘要成條列</格式>")
+
+    assert _issues(db) == []
+
+
+def test_slot_nested_deep_is_error(db):
+    add_prompt(db, "recap", "<甲>\n<乙>\n<log_content></log_content>\n</乙>\n</甲>")
+
+    [(level, _, message)] = _issues(db)
+    assert level == "ERROR" and "<log_content> 包在 <甲> 裡面" in message
 
 
 def test_structure_tag_mentioned_in_system_does_not_affect_prompt(db):
