@@ -30,17 +30,19 @@ def test_non_header_line_is_content():
 
 
 @pytest.mark.parametrize(
-    "line",
+    "line, reason",
     [
-        "[2026-06-20 21:09:45] 沈曉棠",  # 無冒號
-        "[2026-06-20 21:09:45] 沈曉棠：我來了",  # 全形冒號
-        "[2026-06-20 21:09:45] 顧望舒： > page.31｜2026/03/05(四)｜19:20｜霧津港",  # 全形冒號 + 狀態欄時間
-        "[2026-06-20 21:09:45] : 沒有發話者",
-        "[2026-13-40 21:09:45] 沈曉棠: 時間不存在",
+        ("[2026-06-20 21:09:45] 沈曉棠", "缺「發話者:」"),  # 無冒號
+        ("[2026-06-20 21:09:45]:", "缺「發話者:」"),
+        ("[2026-06-20 21:09:45] : 沒有發話者", "缺「發話者:」"),  # 舊版會存成 sender=""
+        ("[2026-06-20 21:09:45] 沈曉棠：我來了", "全形冒號"),  # 整行沒有半形冒號
+        ("[2026-06-20 21:09:45] 顧望舒： > page.31｜2026/03/05(四)｜19:20｜霧津港", "全形冒號"),  # 舊版 sender 變亂碼
+        ("[2026-06-20 21:09:45] 場景：開場: 內容", "全形冒號"),  # 取捨:名字本身含「：」也擋
+        ("[2026-13-40 21:09:45] 沈曉棠: 時間不存在", "時間無法解析"),
     ],
 )
-def test_malformed_header_raises_with_line_no(line):
-    with pytest.raises(LogFormatError, match="第 7 行"):
+def test_malformed_header_raises_with_line_no_and_reason(line, reason):
+    with pytest.raises(LogFormatError, match=f"第 7 行.*{reason}"):
         parse_log_header_line(line, 7)
 
 
@@ -72,3 +74,18 @@ def test_router_returns_400_on_malformed_header(client, db):
     )
     assert res.status_code == 400
     assert "第 1 行" in res.json()["detail"]
+
+
+def test_indented_timestamp_line_is_header(db):
+    # 判定與解析都看 strip 後的行;舊版判定看原始行,縮排的時間戳行會被併進上一筆內文
+    cid = add_character(db)
+    log = "[2026-06-20 21:09:46] 顧望舒: 第一句\n  [2026-06-20 21:10:00] 顧望舒: 第二句\n"
+    assert parse_and_import(cid, "沈曉棠", log, db) == 2
+
+
+def test_trailing_user_turn_without_reply_is_not_imported(db):
+    # 既有行為:user 發話要等下一個角色回覆才一起入庫,檔尾沒有回覆的 user turn 不存
+    cid = add_character(db)
+    log = "[2026-06-20 21:09:46] 顧望舒: 回覆\n[2026-06-20 21:10:00] 沈曉棠: 還沒被回的話\n"
+    assert parse_and_import(cid, "沈曉棠", log, db) == 1
+    assert [r.sender for r in db.query(NovelLog)] == ["顧望舒"]

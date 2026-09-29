@@ -26,13 +26,14 @@ def parse_log_header_line(line: str, line_no: int | None = None):
     except ValueError as e:
         raise LogFormatError(f"{where}時間無法解析:[{raw_log_str}]") from e
 
-    sender_match = header_sender_reg.match(line, prefix.end())
-    sender = sender_match.group(1).strip() if sender_match else ""
-    # 全形冒號當分隔時,[^:]+ 會一路吃到狀態欄時間的半形冒號(｜16:40｜),發話者變成亂碼卻不報錯
-    if "：" in sender:
+    # 全形冒號當分隔時,[^:]+ 會一路吃到狀態欄時間的半形冒號(｜16:40｜),發話者變成亂碼卻不報錯。
+    # 所以第一個半形冒號之前(沒有就整行)出現全形冒號一律擋;代價:發話者名字本身含「：」也會被擋
+    if "：" in line[prefix.end() :].split(":", 1)[0]:
         raise LogFormatError(
             f"{where}發話者後面用了全形冒號「：」,請改成半形「:」:{line[:60]}"
         )
+    sender_match = header_sender_reg.match(line, prefix.end())
+    sender = sender_match.group(1).strip() if sender_match else ""
     if not sender:
         raise LogFormatError(
             f"{where}開頭有時間戳,但後面缺「發話者:」(例:[時間] 名字: 內容):{line[:60]}"
