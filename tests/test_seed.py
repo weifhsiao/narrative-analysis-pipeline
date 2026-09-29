@@ -93,8 +93,10 @@ def test_empty_db_has_no_foreign_data(db):
         (lambda db: add_log(db, 1, "匯入的 log", "2026-06-20 21:02:11"), "novel_log"),
         (lambda db: add_context(db, 1, "relationship", "真實 context"), "character_context"),
         (lambda db: db.add(PromptExecution(run_id=1, prompt_id=3, result_content="x")), "prompt_execution"),
+        # 與 seed run 相同、只有 run_id 不同(例:在範例角色上另建、還沒跑過的 run)
+        (lambda db: db.add(Run(**(seed.SEED_RUNS[0] | {"run_id": 2}))), "run"),
     ],
-    ids=["character", "novel_log", "context", "execution"],
+    ids=["character", "novel_log", "context", "execution", "run"],
 )
 def test_foreign_data_is_reported(db, add_foreign, table):
     _seed(db)
