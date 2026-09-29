@@ -91,8 +91,9 @@ def test_slot_nested_in_slot_is_error(db):
     add_context(db, add_character(db), "relationship", "REL")
     add_prompt(db, "summary", "<relationship><log_content></log_content></relationship>")
 
-    [(level, _, message)] = [i for i in _issues(db) if i[0] == "ERROR"]
-    assert "<log_content> 包在 <relationship> 裡面" in message
+    errors = [m for lv, _, m in _issues(db) if lv == "ERROR"]
+    assert any("<log_content> 包在 <relationship> 裡面" in m for m in errors)
+    assert any("<relationship> 開閉之間有文字" in m for m in errors)  # 外層也吞掉了內層那段
 
 
 def test_context_slot_nested_in_structure_tag_is_error(db):
@@ -138,6 +139,22 @@ def test_slot_name_only_mentioned_inside_structure_tag_is_fine(db):
     add_prompt(db, "recap", "<格式>把 <log_content> 摘要成條列</格式>")
 
     assert _issues(db) == []
+
+
+def test_text_inside_filled_slot_is_error(db):
+    # 內文先提到 <scenario>:引擎從它配到後面的 </scenario>,中間的字會被 context 換掉
+    add_context(db, add_character(db), "scenario", "SCN")
+    add_prompt(db, "summary", "下面的 <scenario> 是目前場景,請參考。\n<scenario></scenario>\n請分析。")
+
+    [message] = [m for lv, _, m in _issues(db) if lv == "ERROR"]
+    assert "<scenario> 開閉之間有文字,會被整段換掉" in message
+
+
+def test_extra_unpaired_copy_of_filled_slot_is_error(db):
+    add_prompt(db, "summary", "<log_content></log_content>\n最後再讀一次 <log_content> 內容")
+
+    [(level, _, message)] = _issues(db)
+    assert level == "ERROR" and "另有未配對" in message
 
 
 def test_slot_nested_deep_is_error(db):
