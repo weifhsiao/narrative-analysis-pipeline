@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from util.db_util import get_db
 from service.novel_log_service import parse_and_import
+from util.parse_log_util import LogFormatError
 from util.crud.novel_log import get_novel_logs
 from datetime import datetime
 from api.schemas import NovelLogResponse
@@ -21,7 +22,10 @@ async def import_log(
 ):
     content_byte = await file.read()  # byte
     content = content_byte.decode("utf-8")  # 轉string
-    import_cnt = parse_and_import(character_id, user_name, content, db)
+    try:
+        import_cnt = parse_and_import(character_id, user_name, content, db)
+    except LogFormatError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"import_cnt": import_cnt}
 
 

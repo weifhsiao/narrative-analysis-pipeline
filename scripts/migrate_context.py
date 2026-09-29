@@ -8,9 +8,10 @@ import re
 import sys
 from pathlib import Path
 from util.db_util import SessionLocal
+from util.paths import DATA_DIR
 from util.models import CharacterContext
 
-BASE = Path("./data")
+BASE = DATA_DIR
 
 TYPE_TITLE = {"relationship": "關係狀態總結", "timeline": "時間軸"}
 

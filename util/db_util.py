@@ -1,20 +1,19 @@
-import os
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from pathlib import Path
+from util import config
+from util.paths import DATA_DIR
 
-# engine 在 import 當下建立,入口(API/script)不一定已 load .env,這裡自己 load(不覆蓋既有環境變數)
-load_dotenv()
-
-DB_DIR = Path("./data")
+DB_DIR = DATA_DIR
 DB_DIR.mkdir(exist_ok=True)
+DB_PATH = DB_DIR / "novel.db"
 
-# SQL_ECHO=true 時印出 SQL(dev debug 用);預設關閉,demo/截圖不被 SQL log 洗版
-SQL_ECHO = os.getenv("SQL_ECHO", "false").strip().lower() in ("1", "true", "yes")
-
-engine = create_engine(f"sqlite:///{DB_DIR}/novel.db", echo=SQL_ECHO)
+engine = create_engine(f"sqlite:///{DB_PATH}", echo=config.sql_echo())
 SessionLocal = sessionmaker(engine)
+
+
+def quiet_sql() -> None:
+    """報告型 CLI(lint / import_prompts / eval)用:就算 .env 開了 SQL_ECHO,輸出也不被 SQL log 洗掉。"""
+    engine.echo = False
 
 
 # yield:交給呼叫方使用，最後確保關閉

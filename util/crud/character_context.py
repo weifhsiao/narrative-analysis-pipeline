@@ -10,6 +10,10 @@ def create_context(db: Session, ctx: CharacterContext) -> CharacterContext:
     return ctx
 
 
+# UI 列表與 prompt 內的 context 用同一個順序
+_CONTEXT_ORDER = (CharacterContext.sort_order, CharacterContext.context_id)
+
+
 def get_context(db: Session, context_id: int) -> CharacterContext | None:
     return db.get(CharacterContext, context_id)
 
@@ -18,7 +22,7 @@ def get_contexts_by_character(db: Session, character_id: int) -> list[CharacterC
     stmt = (
         select(CharacterContext)
         .where(CharacterContext.character_id == character_id)
-        .order_by(CharacterContext.sort_order, CharacterContext.context_id)
+        .order_by(*_CONTEXT_ORDER)
     )
     return db.execute(stmt).scalars().all()
 
@@ -33,7 +37,7 @@ def get_active_contexts_by_type(
             CharacterContext.context_type == context_type,
             CharacterContext.is_active.is_(True),
         )
-        .order_by(CharacterContext.sort_order, CharacterContext.context_id)
+        .order_by(*_CONTEXT_ORDER)
     )
     return db.execute(stmt).scalars().all()
 

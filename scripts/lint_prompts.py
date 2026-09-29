@@ -6,10 +6,9 @@
 有 ERROR 時 exit 1(WARN/INFO 不影響)。
 """
 import argparse
-import logging
 import sys
 
-from util.db_util import SessionLocal
+from util.db_util import SessionLocal, quiet_sql
 from service.prompt_service import lint_prompts
 
 
@@ -18,8 +17,7 @@ def main():
     parser.add_argument("--character", type=int, default=None, help="加查此角色的 context 覆蓋")
     args = parser.parse_args()
 
-    # 就算 .env 開了 SQL_ECHO,lint 報告也要看得到:這支工具固定壓掉 SQL log
-    logging.disable(logging.INFO)
+    quiet_sql()
 
     db = SessionLocal()
     try:

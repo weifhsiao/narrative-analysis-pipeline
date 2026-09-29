@@ -1,9 +1,9 @@
-import os
 import time
 from datetime import datetime
 from util.file_util import write_response
+from util import config
 from util.ai_client import get_client, Attachment, AIBlockedError, TokenUsage
-from util.models import PromptExecution
+from util.models import PromptExecution, ResultCode
 from util.crud.prompt import insert_prompt_executions
 from sqlalchemy.orm import Session
 from service.novel_log_service import assemble_dialogue
@@ -22,7 +22,7 @@ def _run_prompt(
     preview: bool = False,
     attachments: list[Attachment] | None = None,
 ) -> dict:
-    ai_model = os.getenv("GEMINI_MODEL", "UNKNOWN")
+    ai_model = config.gemini_model()
     start_time = datetime.now()
     print(
         f"prompt=[{prompt_name}]  | model=[{ai_model}] | preview=[{preview}] | start."
@@ -35,22 +35,22 @@ def _run_prompt(
         if "log_content" not in rendered.used_run_params:
             attachments = None
         if preview:
-            code, content = "PREVIEW", None
+            code, content = ResultCode.PREVIEW, None
         else:
             result = get_client().generate(
                 rendered.prompt, rendered.system, attachments=attachments
             )
             write_response(result.text, timestamp, f"{prompt_name}")
-            code, content, usage = "SUCCESS", result.text, result.usage
+            code, content, usage = ResultCode.SUCCESS, result.text, result.usage
     except AIBlockedError as e:
         # 200 but no usable text (content/safety block). Store the real reason,
         # not a downstream error. generate() raises before write_response, so no
         # empty response file is written. Blocked input is usually still billed.
-        code, content, usage = "BLOCKED", str(e), e.usage
+        code, content, usage = ResultCode.BLOCKED, str(e), e.usage
     except Exception as e:
         # Everything else: API errors (4xx/5xx), network issues, bugs.
         # str(APIError) already includes the HTTP code, e.g. "400 INVALID_ARGUMENT...".
-        code, content = "ERROR", str(e)
+        code, content = ResultCode.ERROR, str(e)
 
     end_time = datetime.now()
 
@@ -101,7 +101,7 @@ def _to_preview(result: dict) -> dict:
             f"{a.filename or '(unnamed)'} | {a.mime_type} | {len(a.data)} bytes"
             for a in result["attachments"] or []
         ],
-        "error": result["result_content"] if result["result_code"] == "ERROR" else None,
+        "error": result["result_content"] if result["result_code"] == ResultCode.ERROR else None,
     }
 
 
@@ -136,8 +136,7 @@ def run_pipeline(
     # load parameter file
     log_content = assemble_dialogue(character_id, db, range_start, range_end)
 
-    # log 輸入模式:inline(純文字內嵌,預設) / attachment(夾檔)
-    log_input_mode = os.getenv("LOG_INPUT_MODE", "inline")
+    log_input_mode = config.log_input_mode()
     if log_input_mode == "attachment":
         # placeholder 換成指向附件的提示,真正 log 走附件;各 prompt 共用同一個 Attachment
         log_text = "（完整劇情內容請見附件檔案 story_log.txt）"
@@ -178,9 +177,9 @@ def run_pipeline(
         )
 
     end_time = datetime.now()
-    ok_count = sum(1 for r in results if r["result_code"] == "SUCCESS")
-    blocked_count = sum(1 for r in results if r["result_code"] == "BLOCKED")
-    error_count = sum(1 for r in results if r["result_code"] == "ERROR")
+    ok_count = sum(1 for r in results if r["result_code"] == ResultCode.SUCCESS)
+    blocked_count = sum(1 for r in results if r["result_code"] == ResultCode.BLOCKED)
+    error_count = sum(1 for r in results if r["result_code"] == ResultCode.ERROR)
 
     print(
         f"[run_pipeline] end | total=[{(end_time - start_time).total_seconds()}]s | ok=[{ok_count}] | blocked=[{blocked_count}] | error=[{error_count}]"

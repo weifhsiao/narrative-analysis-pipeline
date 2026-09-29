@@ -1,8 +1,8 @@
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from google import genai
 from google.genai import types, errors
+from util import config
 
 
 @dataclass
@@ -65,8 +65,8 @@ class GeminiClient(AIClient):
 
     def __init__(self):
         super().__init__()
-        gemini_api_key = os.getenv("GEMINI_API_KEY", "")
-        self.model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+        gemini_api_key = config.gemini_api_key()
+        self.model = config.gemini_model()
         self.client = genai.Client(api_key=gemini_api_key)
 
     def generate(
@@ -199,7 +199,7 @@ def _format_response_diagnostics(response) -> str:
 
 
 def get_client() -> AIClient:
-    provider = os.getenv("AI_PROVIDER", "gemini")
+    provider = config.ai_provider()
 
     if provider == "gemini":
         return GeminiClient()

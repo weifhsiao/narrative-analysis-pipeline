@@ -2,39 +2,45 @@ import re
 from datetime import datetime
 from .models import NovelLog
 
-# REGEX
-first_line_reg = r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*(.*?):?$"
-remove_first_line_reg = r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*"
-find_time_and_sander_reg = r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*([^:]+):"
+# 標題行 = 時間戳開頭的行;判定與解析共用 header_prefix_reg,不會各說各話
+header_prefix_reg = r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*"
+header_sender_reg = re.compile(r"([^:]+):")
 
 
-"""
-確認是否屬於log第一行
-"""
+class LogFormatError(ValueError):
+    """log 格式不符,整份不匯入。訊息帶行號,給使用者直接看。"""
 
 
-def is_new_turn_header(line: str):
-    return bool(re.match(first_line_reg, line))
+def parse_log_header_line(line: str, line_no: int | None = None):
+    """時間戳開頭 → 標題行,回 (raw_log_time, sender, remaining_content);
+    否則是內文,回 None。像標題行卻解析不了就報錯,不猜。"""
+    line = line.strip()
+    prefix = re.match(header_prefix_reg, line)
+    if not prefix:
+        return None
 
+    where = f"第 {line_no} 行" if line_no is not None else "標題行"
+    raw_log_str = prefix.group(1)
+    try:
+        raw_log_time = datetime.strptime(raw_log_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError as e:
+        raise LogFormatError(f"{where}時間無法解析:[{raw_log_str}]") from e
 
-def parse_log_header_line(line: str):
-    match_obj = re.match(find_time_and_sander_reg, line.strip())
-    if match_obj:
-        raw_log_str = match_obj.group(1).strip()
-        try:
-            raw_log_time = datetime.strptime(raw_log_str, "%Y-%m-%d %H:%M:%S")
-        except ValueError as e:
-            raise ValueError(f"無法解析 raw_log_time:[{raw_log_str}]") from e
+    # 全形冒號當分隔時,[^:]+ 會一路吃到狀態欄時間的半形冒號(｜16:40｜),發話者變成亂碼卻不報錯。
+    # 所以第一個半形冒號之前(沒有就整行)出現全形冒號一律擋;代價:發話者名字本身含「：」也會被擋
+    if "：" in line[prefix.end() :].split(":", 1)[0]:
+        raise LogFormatError(
+            f"{where}發話者後面用了全形冒號「：」,請改成半形「:」:{line[:60]}"
+        )
+    sender_match = header_sender_reg.match(line, prefix.end())
+    sender = sender_match.group(1).strip() if sender_match else ""
+    if not sender:
+        raise LogFormatError(
+            f"{where}開頭有時間戳,但後面缺「發話者:」(例:[時間] 名字: 內容):{line[:60]}"
+        )
 
-        sender = match_obj.group(2).strip()
-        remaining_content = line[match_obj.end() :].strip()
-        return raw_log_time, sender, remaining_content
-
-    return None, None, None
-
-
-def remove_timestamp(line: str):
-    return re.sub(remove_first_line_reg, "", line)
+    remaining_content = line[sender_match.end() :].strip()
+    return raw_log_time, sender, remaining_content
 
 
 def build_novel_logs(

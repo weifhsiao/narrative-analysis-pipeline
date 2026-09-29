@@ -1,6 +1,16 @@
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, UniqueConstraint
 from datetime import datetime
+from enum import StrEnum
+
+
+class ResultCode(StrEnum):
+    """prompt_execution.result_code 的值。StrEnum 等同字串,DB 仍存純文字;UI 的 .code-* CSS 對應同一組名稱。"""
+
+    SUCCESS = "SUCCESS"
+    BLOCKED = "BLOCKED"
+    ERROR = "ERROR"
+    PREVIEW = "PREVIEW"  # 只出現在 preview 回傳,不入庫
 
 
 class Base(DeclarativeBase):

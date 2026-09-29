@@ -13,10 +13,9 @@ fresh clone 無 DB 時無需遷移——create_all 會直接依新 model 建表�
 import shutil
 import sys
 
-from util.db_util import engine, DB_DIR
+from util.db_util import engine, DB_PATH
 
 DROP_COLS = ["page", "story_date", "story_time", "raw_location", "is_spinoff"]
-DB_PATH = DB_DIR / "novel.db"
 
 
 def existing_columns(conn) -> list[str]:

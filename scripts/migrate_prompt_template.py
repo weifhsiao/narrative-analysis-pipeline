@@ -17,10 +17,9 @@ import shutil
 import sys
 from datetime import datetime
 
-from util.db_util import engine, DB_DIR
+from util.db_util import engine, DB_DIR, DB_PATH
 from util.models import PromptTemplate
 
-DB_PATH = DB_DIR / "novel.db"
 
 TEMPLATE_NEW_COLS = ["root_prompt_id", "version", "max_length"]
 EXEC_ADD_COLS = {
