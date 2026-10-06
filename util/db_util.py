@@ -1,11 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from util import config
-from util.paths import DATA_DIR
 
-DB_DIR = DATA_DIR
+# 跟 SQL_ECHO 一樣在 import 時決定:engine 建好後換 DB_PATH 不會生效
+DB_PATH = config.db_path()
+DB_DIR = DB_PATH.parent
 DB_DIR.mkdir(exist_ok=True)
-DB_PATH = DB_DIR / "novel.db"
 
 engine = create_engine(f"sqlite:///{DB_PATH}", echo=config.sql_echo())
 SessionLocal = sessionmaker(engine)

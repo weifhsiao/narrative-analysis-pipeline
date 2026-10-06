@@ -75,7 +75,7 @@ def main(write: bool) -> None:
         return
 
     # 帶時間戳,不蓋掉前幾次遷移留下的 novel.db.bak
-    bak = DB_DIR / f"novel_{datetime.now():%Y%m%d%H%M}.db.bak"
+    bak = DB_DIR / f"{DB_PATH.stem}_{datetime.now():%Y%m%d%H%M}.db.bak"
     shutil.copy2(DB_PATH, bak)
     print(f"\n已備份:{bak}")
 
