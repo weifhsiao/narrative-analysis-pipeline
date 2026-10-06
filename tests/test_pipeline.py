@@ -1,5 +1,4 @@
 """run_pipeline 與 /runs router：preflight lint、preview、正式執行（快照/用量）、AI 失敗的記錄方式。"""
-
 import pytest
 from sqlalchemy import select
 
@@ -57,7 +56,7 @@ def test_lint_error_aborts_before_ai_and_files(db, setup, fake_ai, tmp_path):
         run_pipeline(db, 1, setup, START, END)
 
     assert [i.prompt for i in exc.value.issues] == ["timeline"]
-    assert fake_ai.calls != []
+    assert fake_ai.calls == []
     assert not (tmp_path / "data").exists()
     assert _executions(db) == []
 
@@ -65,9 +64,7 @@ def test_lint_error_aborts_before_ai_and_files(db, setup, fake_ai, tmp_path):
 def test_missing_pipeline_prompt_aborts(db, fake_ai):
     cid = add_character(db)
     add_context(db, cid, "relationship", "REL")
-    add_prompt(
-        db, "summary", good_prompt("summary")
-    )  # timeline / relationship 沒 import
+    add_prompt(db, "summary", good_prompt("summary"))  # timeline / relationship 沒 import
 
     with pytest.raises(PromptLintError) as exc:
         run_pipeline(db, 1, cid, START, END)
@@ -87,9 +84,7 @@ def test_lint_error_in_non_pipeline_prompt_does_not_abort(db, setup, fake_ai):
 def test_lint_warn_does_not_abort(db, fake_ai):
     cid = add_character(db)
     other = add_character(db, "別人")
-    add_context(
-        db, other, "relationship", "只有別人有"
-    )  # type 存在，但 cid 沒有 → WARN
+    add_context(db, other, "relationship", "只有別人有")  # type 存在，但 cid 沒有 → WARN
     for name in PIPELINE_PROMPTS:
         add_prompt(db, name, good_prompt(name))
     assert any(i.level == "WARN" for i in lint_prompts(db, cid))  # 前提：真的有 WARN
@@ -102,9 +97,7 @@ def test_lint_warn_does_not_abort(db, fake_ai):
 # ---- preview ----
 
 
-def test_preview_returns_sent_content_without_ai_files_or_db(
-    db, setup, fake_ai, tmp_path
-):
+def test_preview_returns_sent_content_without_ai_files_or_db(db, setup, fake_ai, tmp_path):
     result = run_pipeline(db, 1, setup, START, END, preview=True)
 
     prompts = result["prompts"]
@@ -127,9 +120,7 @@ def test_execute_sends_filled_prompt_and_records_success(db, setup, fake_ai):
     insert_cnt = run_pipeline(db, 7, setup, START, END)
 
     assert insert_cnt == len(PIPELINE_PROMPTS)
-    assert [c["system"] for c in fake_ai.calls] == [
-        f"你是 {n} 助手。" for n in PIPELINE_PROMPTS
-    ]
+    assert [c["system"] for c in fake_ai.calls] == [f"你是 {n} 助手。" for n in PIPELINE_PROMPTS]
     call = fake_ai.calls[0]
     assert "<relationship>\nREL_CONTENT\n</relationship>" in call["prompt"]
     assert f"<log_content>\n{IN_RANGE_LOG}\n</log_content>" in call["prompt"]
@@ -155,9 +146,7 @@ def test_execute_snapshot_has_context_but_not_log(db, setup):
 
     for r in _executions(db):
         assert "<relationship>\nREL_CONTENT\n</relationship>" in r.prompt_snapshot
-        assert (
-            "<log_content>\n</log_content>" in r.prompt_snapshot
-        )  # 模板原樣，log 由 run range 重建
+        assert "<log_content>\n</log_content>" in r.prompt_snapshot  # 模板原樣，log 由 run range 重建
         assert "第一句劇情" not in r.prompt_snapshot
         assert r.system_snapshot.startswith("你是 ")
 
@@ -203,11 +192,7 @@ def test_attachment_mode_sends_log_as_file(db, setup, fake_ai, monkeypatch):
 
 def test_attachment_only_for_prompts_with_log_tag(db, setup, fake_ai, monkeypatch):
     monkeypatch.setenv("LOG_INPUT_MODE", "attachment")
-    add_prompt(
-        db,
-        "timeline",
-        "# system instruction\nsys\n\n# prompt\n<relationship>\n</relationship>",
-    )
+    add_prompt(db, "timeline", "# system instruction\nsys\n\n# prompt\n<relationship>\n</relationship>")
 
     run_pipeline(db, 1, setup, START, END)
 
