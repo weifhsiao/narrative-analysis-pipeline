@@ -111,6 +111,8 @@ Upgrading an existing `data/novel.db` from before prompt versioning: run `python
 
 Log imports skip turns already in the DB (same thread, same second, same sender), so overlapping exports are safe to re-import. An existing DB gets the backing unique index with `python -m util.migration` (idempotent; stops with a message if duplicates already exist).
 
+After pulling a version that adds columns (e.g. `character_context.keywords`), run `python -m util.migration` too: it adds missing nullable columns to existing tables without touching the data.
+
 **4. Run eval** (reads stored sample results; no API call, no key needed):
 
 The `execution_id` for each sample result (seed loads them in the filename order of `examples/results/`):

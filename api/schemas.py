@@ -79,7 +79,7 @@ class PromptExecResponse(BaseModel):
 
 class ContextModify(BaseModel):
     # trim:字串前後空白去掉(None 不動)
-    @field_validator("context_type", "context_content", "title", check_fields=False)
+    @field_validator("context_type", "context_content", "title", "keywords", check_fields=False)
     @classmethod
     def _strip(cls, v):
         return v.strip() if isinstance(v, str) else v
@@ -99,6 +99,7 @@ class ContextCreate(ContextModify):
     context_content: str
     sort_order: int = 0
     title: str | None = None
+    keywords: str | None = None
 
 
 class ContextUpdate(ContextModify):
@@ -106,6 +107,7 @@ class ContextUpdate(ContextModify):
     context_content: str | None = None
     sort_order: int | None = None
     title: str | None = None
+    keywords: str | None = None
     is_active: bool = True
 
 
@@ -124,3 +126,4 @@ class ContextListItem(BaseModel):
 
 class ContextResponse(ContextListItem):
     context_content: str
+    keywords: str | None = None

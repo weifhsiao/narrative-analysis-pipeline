@@ -336,8 +336,11 @@ function renderDetail() {
           <label for="is_active" style="margin:0">is_active（啟用）</label>
         </div>
       </div>
+      <label>keywords（遊戲檢索關鍵字）
+        <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyField('keywords')">複製關鍵字</button></label>
+      <input type="text" name="keywords" value="${escapeAttr(c.keywords || "")}" placeholder="例：初遇、雨夜熱可可">
       <label>context_content <span class="cc-count" id="ccCount"></span>
-        <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyContent()">複製內容</button></label>
+        <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyField('context_content')">複製內容</button></label>
       <textarea name="context_content" oninput="updateCount(this)">${escapeHtml(c.context_content)}</textarea>
       <div class="actions">
         <button type="button" class="act primary" onclick="save()" title="⌘S / Ctrl+S">儲存變更</button>
@@ -356,7 +359,9 @@ function collectChanges() {
   const sort = Number(f.sort_order.value);
   const content = f.context_content.value.trim();
   const active = f.is_active.checked;
+  const keywords = f.keywords.value.trim();
   if (title !== (current.title || "").trim()) changes.title = title;
+  if (keywords !== (current.keywords || "").trim()) changes.keywords = keywords;
   if (type !== current.context_type.trim()) changes.context_type = type;
   if (sort !== current.sort_order) changes.sort_order = sort;
   if (content !== current.context_content.trim()) changes.context_content = content;
@@ -409,6 +414,8 @@ function newContext() {
         </div>
         <div style="flex:1"></div>
       </div>
+      <label>keywords（遊戲檢索關鍵字，選填）</label>
+      <input type="text" name="keywords" value="" placeholder="例：初遇、雨夜熱可可">
       <label>context_content ＊ <span class="cc-count" id="ccCount"></span></label>
       <textarea name="context_content" placeholder="必填" oninput="updateCount(this)"></textarea>
       <div class="actions">
@@ -436,6 +443,8 @@ async function create() {
   const body = { character_id: cid, context_type: type, context_content: content, sort_order: Number(f.sort_order.value) || 0 };
   const title = f.title.value.trim();
   if (title) body.title = title;
+  const keywords = f.keywords.value.trim();
+  if (keywords) body.keywords = keywords;
   try {
     const created = await api("/character_contexts/", {
       method: "POST",
@@ -459,7 +468,7 @@ function updateCount(el) {
 function isDirty() {
   if (document.getElementById("editForm") && current) return Object.keys(collectChanges()).length > 0;
   const f = document.getElementById("createForm");
-  if (f) return [f.title, f.context_type, f.context_content].some(el => el.value.trim() !== "");
+  if (f) return [f.title, f.context_type, f.keywords, f.context_content].some(el => el.value.trim() !== "");
   return false;
 }
 
@@ -485,11 +494,12 @@ document.addEventListener("keydown", e => {
   else if (document.getElementById("createForm")) create();
 });
 
-// ---------- 複製內容 ----------
-// 複製的是框內目前的文字(含尚未儲存的修改)。clipboard API 只在 https / localhost 可用,其他情況退回 execCommand
-async function copyContent() {
-  const ta = document.querySelector("#editForm [name=context_content]");
+// ---------- 複製 ----------
+// 複製的是欄位目前的文字(含尚未儲存的修改)。clipboard API 只在 https / localhost 可用,其他情況退回 execCommand
+async function copyField(name) {
+  const ta = document.querySelector(`#editForm [name=${name}]`);
   if (!ta) return;
+  if (!ta.value.trim()) { toast("欄位是空的", ""); return; }
   const fallback = () => {
     ta.select();
     const ok = document.execCommand("copy");
