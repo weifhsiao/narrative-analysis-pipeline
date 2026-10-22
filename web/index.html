@@ -383,7 +383,7 @@ function renderDetail() {
       </div>
       <label>keywords（遊戲檢索關鍵字）
         <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyField('keywords')">複製關鍵字</button></label>
-      <input type="text" name="keywords" value="${escapeAttr(c.keywords || "")}" placeholder="例：初遇、雨夜熱可可">
+      <input type="text" name="keywords" value="${escapeAttr(c.keywords || "")}" placeholder="例：初訪燈塔、潮汐表">
       <label>context_content <span class="cc-count" id="ccCount"></span>
         <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyField('context_content')">複製內容</button></label>
       <textarea name="context_content" oninput="updateCount(this)">${escapeHtml(c.context_content)}</textarea>
@@ -468,7 +468,7 @@ function newContext() {
         <div style="flex:1"></div>
       </div>
       <label>keywords（遊戲檢索關鍵字，選填）</label>
-      <input type="text" name="keywords" value="" placeholder="例：初遇、雨夜熱可可">
+      <input type="text" name="keywords" value="" placeholder="例：初訪燈塔、潮汐表">
       <label>context_content ＊ <span class="cc-count" id="ccCount"></span></label>
       <textarea name="context_content" placeholder="必填" oninput="updateCount(this)"></textarea>
       <div class="actions">
