@@ -39,6 +39,10 @@
   .badge.off { background: #fdd; color: #944; }
 
   .empty { padding: 20px; color: #999; font-size: 14px; }
+  .group-head { padding: 6px 14px; font-size: 12px; font-weight: 600; color: #446; background: #f3f4fa;
+    border-bottom: 1px solid #e3e5f0; position: sticky; top: 0; z-index: 1; }
+  .group-head .muted { font-weight: normal; }
+  .row.inactive .title { color: #999; }
 
   /* generic sections for logs / runs */
   .section { padding: 16px 20px; border-bottom: 1px solid #eee; }
@@ -203,6 +207,7 @@ function charId() { return document.getElementById("charSelect").value; }
 
 // ---------- tabs ----------
 function switchTab(name) {
+  if (name !== currentTab && currentTab === "context" && !confirmDiscard()) return;
   currentTab = name;
   ["context", "logs", "runs"].forEach(t => {
     document.getElementById("tab-" + t).classList.toggle("active", t === name);
@@ -230,7 +235,14 @@ async function loadCharacters() {
   } catch (e) { toast("載入角色失敗：" + e.message, "err"); }
 }
 
+let lastCharId = "";
 function onCharChange() {
+  const sel = document.getElementById("charSelect");
+  if (lastCharId && sel.value !== lastCharId && currentTab === "context" && !confirmDiscard()) {
+    sel.value = lastCharId;  // 取消:選單退回原角色
+    return;
+  }
+  lastCharId = sel.value;
   // 切角色時重置各 tab 的暫存畫面
   activeId = null; current = null;
   document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
@@ -250,22 +262,41 @@ async function loadList() {
     const items = await api(`/character_contexts/?character_id=${cid}`);
     if (!items.length) { box.innerHTML = "<div class='empty'>此角色尚無 context</div>"; return; }
     box.innerHTML = "";
-    for (const it of items) {
-      const div = document.createElement("div");
-      div.className = "row" + (it.context_id === activeId ? " active" : "");
-      div.dataset.id = it.context_id;
-      div.innerHTML = `
-        <div class="title">${escapeHtml(it.title || "(無標題)")}</div>
-        <div class="meta">
-          <span class="badge type">${escapeHtml(it.context_type)}</span>
-          <span>sort ${it.sort_order}</span>
-          <span>#${it.context_id}</span>
-          ${it.is_active ? "" : "<span class='badge off'>停用</span>"}
-        </div>`;
-      div.onclick = () => loadDetail(it.context_id);
-      box.appendChild(div);
+    for (const [type, group] of groupByType(items)) {
+      const head = document.createElement("div");
+      head.className = "group-head";
+      head.innerHTML = `${escapeHtml(type)} <span class="muted">${group.length}</span>`;
+      box.appendChild(head);
+      for (const it of group) {
+        const div = document.createElement("div");
+        div.className = "row" + (it.context_id === activeId ? " active" : "") + (it.is_active ? "" : " inactive");
+        div.dataset.id = it.context_id;
+        div.innerHTML = `
+          <div class="title">${escapeHtml(it.title || "(無標題)")}</div>
+          <div class="meta">
+            <span>sort ${it.sort_order}</span>
+            <span>#${it.context_id}</span>
+            ${it.is_active ? "" : "<span class='badge off'>停用</span>"}
+          </div>`;
+        div.onclick = () => { if (it.context_id !== activeId && confirmDiscard()) loadDetail(it.context_id); };
+        box.appendChild(div);
+      }
     }
   } catch (e) { toast("載入清單失敗：" + e.message, "err"); }
+}
+
+// 依 context_type 分組:常用的三種在前,其餘照字母;組內照 API 順序(sort_order),停用的放組尾
+const TYPE_ORDER = ["relationship", "timeline", "scenario"];
+function groupByType(items) {
+  const groups = new Map();
+  for (const it of items) {
+    if (!groups.has(it.context_type)) groups.set(it.context_type, []);
+    groups.get(it.context_type).push(it);
+  }
+  const rank = t => (TYPE_ORDER.includes(t) ? TYPE_ORDER.indexOf(t) : TYPE_ORDER.length);
+  return [...groups.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([t, g]) => [t, [...g.filter(i => i.is_active), ...g.filter(i => !i.is_active)]]);
 }
 
 async function loadDetail(id) {
@@ -284,7 +315,7 @@ function renderDetail() {
   d.innerHTML = `
     <div class="ro">context_id #${c.context_id} · character_id #${c.character_id}
       · 建立 ${fmt(c.created_at)} · 更新 ${fmt(c.updated_at)}</div>
-    <form id="editForm" onsubmit="return false">
+    <form id="editForm" onsubmit="return false" oninput="updateDirty()" onchange="updateDirty()">
       <div class="inline">
         <div>
           <label>title</label>
@@ -305,10 +336,11 @@ function renderDetail() {
           <label for="is_active" style="margin:0">is_active（啟用）</label>
         </div>
       </div>
-      <label>context_content <span class="cc-count" id="ccCount"></span></label>
+      <label>context_content <span class="cc-count" id="ccCount"></span>
+        <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyContent()">複製內容</button></label>
       <textarea name="context_content" oninput="updateCount(this)">${escapeHtml(c.context_content)}</textarea>
       <div class="actions">
-        <button type="button" class="act primary" onclick="save()">儲存變更</button>
+        <button type="button" class="act primary" onclick="save()" title="⌘S / Ctrl+S">儲存變更</button>
         <button type="button" class="act ghost" onclick="renderDetail()">還原</button>
         <span class="dirty-hint" id="dirty"></span>
       </div>
@@ -350,6 +382,7 @@ async function save() {
 }
 
 function newContext() {
+  if (!confirmDiscard()) return;
   const cid = charId();
   if (!cid) { toast("請先選擇角色", "err"); return; }
   const charLabel = document.getElementById("charSelect").selectedOptions[0].textContent;
@@ -358,7 +391,7 @@ function newContext() {
   const d = document.getElementById("detail");
   d.innerHTML = `
     <div class="ro">新增 context · character ${escapeHtml(charLabel)}</div>
-    <form id="createForm" onsubmit="return false">
+    <form id="createForm" onsubmit="return false" oninput="updateDirty()">
       <div class="inline">
         <div>
           <label>title（選填）</label>
@@ -379,14 +412,16 @@ function newContext() {
       <label>context_content ＊ <span class="cc-count" id="ccCount"></span></label>
       <textarea name="context_content" placeholder="必填" oninput="updateCount(this)"></textarea>
       <div class="actions">
-        <button type="button" class="act primary" onclick="create()">建立</button>
+        <button type="button" class="act primary" onclick="create()" title="⌘S / Ctrl+S">建立</button>
         <button type="button" class="act ghost" onclick="cancelCreate()">取消</button>
+        <span class="dirty-hint" id="dirty"></span>
       </div>
     </form>`;
   updateCount(d.querySelector("[name=context_content]"));
 }
 
 function cancelCreate() {
+  if (!confirmDiscard()) return;
   document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
 }
 
@@ -417,6 +452,56 @@ async function create() {
 function updateCount(el) {
   const span = document.getElementById("ccCount");
   if (span && el) span.textContent = el.value.length + " 字";
+}
+
+// ---------- 未儲存保護 ----------
+// 編輯中:有任何欄位跟載入時不同;新增中:任何欄位有填。換筆、換角色、換分頁、關頁前都會先問。
+function isDirty() {
+  if (document.getElementById("editForm") && current) return Object.keys(collectChanges()).length > 0;
+  const f = document.getElementById("createForm");
+  if (f) return [f.title, f.context_type, f.context_content].some(el => el.value.trim() !== "");
+  return false;
+}
+
+function updateDirty() {
+  const hint = document.getElementById("dirty");
+  if (hint) hint.textContent = isDirty() ? "● 有未儲存的變更" : "";
+}
+
+function confirmDiscard() {
+  return !isDirty() || confirm("有未儲存的變更，確定要放棄嗎？");
+}
+
+window.addEventListener("beforeunload", e => {
+  if (isDirty()) { e.preventDefault(); e.returnValue = ""; }
+});
+
+// ⌘S / Ctrl+S:編輯中=儲存,新增中=建立(只在 Context 分頁)
+document.addEventListener("keydown", e => {
+  if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return;
+  if (currentTab !== "context") return;
+  e.preventDefault();
+  if (document.getElementById("editForm")) save();
+  else if (document.getElementById("createForm")) create();
+});
+
+// ---------- 複製內容 ----------
+// 複製的是框內目前的文字(含尚未儲存的修改)。clipboard API 只在 https / localhost 可用,其他情況退回 execCommand
+async function copyContent() {
+  const ta = document.querySelector("#editForm [name=context_content]");
+  if (!ta) return;
+  const fallback = () => {
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.setSelectionRange(0, 0);
+    if (!ok) throw new Error("瀏覽器不支援");
+  };
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(ta.value); } catch (e) { fallback(); }
+    } else fallback();
+    toast(`已複製 ${ta.value.length} 字`, "ok");
+  } catch (e) { toast("複製失敗：" + e.message, "err"); }
 }
 
 // ========== Logs tab ==========
