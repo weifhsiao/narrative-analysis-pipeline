@@ -57,7 +57,9 @@ def get_novel_logs(
         stmt = stmt.where(NovelLog.raw_log_time >= range_start)
     if range_end is not None:
         stmt = stmt.where(NovelLog.raw_log_time <= range_end)
-    stmt = stmt.order_by(NovelLog.raw_log_time)
+    # 同一秒的(user 與角色回覆、Scene 與 Environment)照寫入順序排;
+    # 少了 novel_log_id,SQLite 走唯一索引時會改成依 sender 字序,對話順序會反過來
+    stmt = stmt.order_by(NovelLog.raw_log_time, NovelLog.novel_log_id)
     return db.execute(stmt).scalars().all()
 
 
