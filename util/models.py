@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase, relationship
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, UniqueConstraint, Index
 from datetime import datetime
 from enum import StrEnum
 
@@ -36,6 +36,12 @@ class NovelLog(Base):
     sender = Column(String, nullable=False)
     content = Column(String)
     created_at = Column(DateTime, default=datetime.now)
+
+    # 去重鍵:同一條線、同一秒、同一發話者 = 同一則訊息(txt 匯出與分享連結兩邊都對得上)。
+    # 只用時間不夠:user 與角色回覆常落在同一秒。
+    __table_args__ = (
+        Index("uq_novel_log_char_time_sender", "character_id", "raw_log_time", "sender", unique=True),
+    )
 
 
 class PromptTemplate(Base):

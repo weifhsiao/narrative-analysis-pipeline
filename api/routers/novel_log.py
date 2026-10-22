@@ -23,10 +23,10 @@ async def import_log(
     content_byte = await file.read()  # byte
     content = content_byte.decode("utf-8")  # 轉string
     try:
-        import_cnt = parse_and_import(character_id, user_name, content, db)
+        result = parse_and_import(character_id, user_name, content, db)
     except LogFormatError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"import_cnt": import_cnt}
+    return {"import_cnt": result.inserted, "skipped_cnt": result.skipped}
 
 
 @router.get("/", response_model=list[NovelLogResponse])

@@ -109,6 +109,8 @@ python -m scripts.import_prompts
 
 Upgrading an existing `data/novel.db` from before prompt versioning: run `python -m scripts.migrate_prompt_template --write` (backs up first), then `python -m scripts.import_prompts`.
 
+Log imports skip turns already in the DB (same thread, same second, same sender), so overlapping exports are safe to re-import. An existing DB gets the backing unique index with `python -m util.migration` (idempotent; stops with a message if duplicates already exist).
+
 **4. Run eval** (reads stored sample results; no API call, no key needed):
 
 The `execution_id` for each sample result (seed loads them in the filename order of `examples/results/`):

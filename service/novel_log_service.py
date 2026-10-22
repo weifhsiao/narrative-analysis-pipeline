@@ -1,13 +1,43 @@
+from dataclasses import dataclass
 from datetime import datetime
 from util.parse_log_util import build_novel_logs, parse_log_header_line
 from sqlalchemy.orm import Session
 from util.db_util import SessionLocal
-from util.crud.novel_log import insert_novel_logs, get_novel_logs
+from util.crud.novel_log import insert_novel_logs, get_novel_logs, get_existing_log_keys
+from util.models import NovelLog
+
+
+@dataclass
+class ImportResult:
+    inserted: int
+    skipped: int
+
+
+def insert_new_novel_logs(
+    db: Session, character_id: int, novel_logs: list[NovelLog]
+) -> ImportResult:
+    """所有 novel_log 寫入的共用入口:同線、同秒、同發話者已存在(或同批重複)就跳過。"""
+    if not novel_logs:
+        return ImportResult(inserted=0, skipped=0)
+
+    times = [log.raw_log_time for log in novel_logs]
+    seen = get_existing_log_keys(db, character_id, min(times), max(times))
+
+    new_logs = []
+    for log in novel_logs:
+        key = (log.raw_log_time, log.sender)
+        if key in seen:
+            continue
+        seen.add(key)
+        new_logs.append(log)
+
+    inserted = insert_novel_logs(db, new_logs)
+    return ImportResult(inserted=inserted, skipped=len(novel_logs) - inserted)
 
 
 def parse_and_import(
     character_id: int, user_name: str, content: str, db: Session
-) -> int:
+) -> ImportResult:
     novel_log_batch_insert_list = []
 
     print(f"log_parser start. character_id:[{character_id}]")
@@ -82,12 +112,12 @@ def parse_and_import(
         build_novel_logs(character_id, block, user_content_list)
     )
 
-    import_cnt = insert_novel_logs(db, novel_log_batch_insert_list)
-    print(f"新增[{import_cnt}]筆 記錄")
+    result = insert_new_novel_logs(db, character_id, novel_log_batch_insert_list)
+    print(f"新增[{result.inserted}]筆 記錄，略過已存在[{result.skipped}]筆")
     # db.commit() # db_util層的yield會commit
 
     print("log_parser finished.")
-    return import_cnt
+    return result
 
 
 def assemble_dialogue(

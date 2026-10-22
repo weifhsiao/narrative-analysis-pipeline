@@ -434,8 +434,9 @@ async function importLog() {
     const r = await api(`/novel_logs/import?character_id=${cid}&user_name=${encodeURIComponent(user)}`, {
       method: "POST", body: fd,
     });
-    out.textContent = `匯入 ${r.import_cnt} 筆`;
-    toast(`匯入成功：${r.import_cnt} 筆`, "ok");
+    const skipped = r.skipped_cnt ? `，略過已存在 ${r.skipped_cnt} 筆` : "";
+    out.textContent = `匯入 ${r.import_cnt} 筆${skipped}`;
+    toast(`匯入成功：${r.import_cnt} 筆${skipped}`, "ok");
   } catch (e) { out.textContent = ""; toast("匯入失敗：" + e.message, "err"); }
 }
 
