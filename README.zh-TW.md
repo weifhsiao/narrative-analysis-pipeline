@@ -145,6 +145,10 @@ uvicorn api.app:app --reload
 
 ![匯入範例 log](docs/images/log_parser_request.png)
 
+### 選用：context 關鍵字建議(需 Gemini API key)
+
+管理頁 Context 編輯區的「✨ 產生建議」會把這筆的內容，加上同一條線其他啟用中的 context 已用過的關鍵字，用 `prompts/keywords.txt` 送給模型(`POST /character_contexts/{id}/suggest-keywords`)。只回傳候選詞、不會存檔：點候選詞加入或移除(原本的關鍵字保留)，並即時顯示距離 30 字上限的字數。先跑一次 `python -m scripts.import_prompts`,讓 `keywords` prompt 進 DB。
+
 ### 選用：預覽 prompt 內容(免金鑰)
 
 想先看 pipeline 實際組出的 prompt、但不呼叫 LLM，可用 preview：

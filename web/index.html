@@ -84,6 +84,16 @@
   .code-ERROR { color: #c0392b; font-weight: 600; }
   .muted { color: #888; font-size: 12px; }
   .back-btn { display: none; }
+  .kw-tools { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+  .kw-count { font-size: 12px; color: #777; }
+  .kw-count.over { color: #c0392b; font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { border: 1px solid #c9cfe8; background: #f5f7ff; color: #334; border-radius: 14px; padding: 4px 10px;
+    font-size: 13px; cursor: pointer; }
+  .chip.on { background: #3b5bdb; border-color: #3b5bdb; color: #fff; }
+  .chip.reused { border-style: dashed; color: #889; }
+  .chip.nofit { opacity: .45; }
+  .kw-note { font-size: 12px; color: #888; margin-top: 4px; }
   .ctx-toolbar { display: flex; gap: 8px; }
   .row.sorting { display: flex; align-items: center; gap: 8px; cursor: default; }
   .row.sorting:hover { background: transparent; }
@@ -383,7 +393,14 @@ function renderDetail() {
       </div>
       <label>keywords（遊戲檢索關鍵字）
         <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyField('keywords')">複製關鍵字</button></label>
-      <input type="text" name="keywords" value="${escapeAttr(c.keywords || "")}" placeholder="例：初遇、雨夜熱可可">
+      <input type="text" name="keywords" value="${escapeAttr(c.keywords || "")}" placeholder="例：初遇、雨夜熱可可" oninput="renderKwTools()">
+      <div class="kw-tools">
+        <span class="kw-count" id="kwCount"></span>
+        <button type="button" class="act ghost small" id="kwSuggestBtn" onclick="suggestKeywords()">✨ 產生建議</button>
+        <button type="button" class="act ghost small" id="kwFillBtn" onclick="fillSuggested()" style="display:none">填入建議組合</button>
+      </div>
+      <div class="chips" id="kwChips"></div>
+      <div class="kw-note" id="kwNote"></div>
       <label>context_content <span class="cc-count" id="ccCount"></span>
         <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyField('context_content')">複製內容</button></label>
       <textarea name="context_content" oninput="updateCount(this)">${escapeHtml(c.context_content)}</textarea>
@@ -400,6 +417,8 @@ function renderDetail() {
       </div>
     </form>`;
   updateCount(d.querySelector("[name=context_content]"));
+  if (kwFor !== c.context_id) { kwCandidates = []; kwFor = c.context_id; kwNote = ""; }
+  renderKwTools();
 }
 
 function collectChanges() {
@@ -629,6 +648,95 @@ async function duplicateContext() {
     await loadList();
     await loadDetail(created.context_id);
   } catch (e) { toast("複製失敗：" + e.message, "err"); loadList(); }
+}
+
+// ---------- 關鍵字建議 ----------
+// AI 只給候選詞,點一下加進欄位、再點一下移除;原本的關鍵字不會被取代。存檔照舊用儲存 / ⌘S。
+const KW_MAX = 30;
+const KW_SEP = "、";
+let kwCandidates = [];   // [{text, used_elsewhere}]
+let kwFor = null;        // 候選詞屬於哪一筆 context
+let kwNote = "";
+
+function splitKeywords(text) {
+  const seen = new Set(), out = [];
+  for (const part of String(text || "").split(/[、,，|｜\n]/)) {
+    const w = part.trim();
+    if (w && !seen.has(w)) { seen.add(w); out.push(w); }
+  }
+  return out;
+}
+
+function kwInput() { return document.querySelector("#editForm [name=keywords]"); }
+
+function setKeywords(words) {
+  const el = kwInput();
+  el.value = words.join(KW_SEP);
+  el.dispatchEvent(new Event("input", { bubbles: true }));  // 觸發字數、候選狀態與未儲存提示
+}
+
+function renderKwTools() {
+  const el = kwInput();
+  if (!el) return;
+  const words = splitKeywords(el.value);
+  const len = el.value.trim().length;
+  const count = document.getElementById("kwCount");
+  count.textContent = `${len} / ${KW_MAX} 字`;
+  count.classList.toggle("over", len > KW_MAX);
+  const box = document.getElementById("kwChips");
+  box.innerHTML = "";
+  for (const c of kwCandidates) {
+    const on = words.includes(c.text);
+    const fits = on || len + (words.length ? KW_SEP.length : 0) + c.text.length <= KW_MAX;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip" + (on ? " on" : "") + (c.used_elsewhere ? " reused" : "") + (fits ? "" : " nofit");
+    chip.textContent = (on ? "✓ " : "") + c.text;
+    chip.title = c.used_elsewhere ? "同一條線的其他事件已用過這個詞" : "";
+    chip.onclick = () => toggleKeyword(c.text);
+    box.appendChild(chip);
+  }
+  document.getElementById("kwFillBtn").style.display = kwCandidates.length ? "" : "none";
+  document.getElementById("kwNote").textContent = kwNote;
+}
+
+function toggleKeyword(word) {
+  const words = splitKeywords(kwInput().value);
+  const i = words.indexOf(word);
+  if (i >= 0) { words.splice(i, 1); setKeywords(words); return; }
+  const next = [...words, word];
+  if (next.join(KW_SEP).length > KW_MAX) { toast(`加上「${word}」會超過 ${KW_MAX} 字`, "err"); return; }
+  setKeywords(next);
+}
+
+// 依排序挑候選,略過其他事件已用過的,塞到 30 字為止;欄位原本有的會保留在前面
+function fillSuggested() {
+  const words = splitKeywords(kwInput().value);
+  for (const c of kwCandidates) {
+    if (c.used_elsewhere || words.includes(c.text)) continue;
+    if ([...words, c.text].join(KW_SEP).length > KW_MAX) continue;
+    words.push(c.text);
+  }
+  setKeywords(words);
+}
+
+async function suggestKeywords() {
+  if (!current) return;
+  const btn = document.getElementById("kwSuggestBtn");
+  const id = current.context_id;
+  btn.disabled = true; btn.textContent = "產生中…";
+  try {
+    const r = await api(`/character_contexts/${id}/suggest-keywords`, { method: "POST" });
+    if (!current || current.context_id !== id) return;  // 等待期間換了別筆
+    kwCandidates = r.candidates; kwFor = id;
+    const used = r.input_tokens != null ? `（${r.model || "AI"}，輸入 ${r.input_tokens}、輸出 ${r.output_tokens} tokens）` : "";
+    kwNote = [`點選候選詞加入或移除；虛線＝其他事件已用過${used}`, ...r.warnings].join("　");
+    renderKwTools();
+  } catch (e) { toast("產生建議失敗：" + e.message, "err"); }
+  finally {
+    const b = document.getElementById("kwSuggestBtn");
+    if (b) { b.disabled = false; b.textContent = "✨ 產生建議"; }
+  }
 }
 
 // ---------- 未儲存保護 ----------

@@ -146,6 +146,10 @@ The admin page is at <http://127.0.0.1:8000/> and works on a phone too. To open 
 
 ![import sample log](docs/images/log_parser_request.png)
 
+### Optional: keyword suggestions for a context (needs a Gemini API key)
+
+In the admin page's Context editor, "✨ 產生建議" sends the entry's content, plus the keywords other active entries of the same thread already use, to the model with `prompts/keywords.txt` (`POST /character_contexts/{id}/suggest-keywords`). It returns candidate keywords only and never saves: click a candidate to add or remove it from the field (existing keywords stay), with a live count against the 30-character limit. Run `python -m scripts.import_prompts` once so the `keywords` prompt is in the DB.
+
 ### Optional: preview prompt content (no key needed)
 
 To see the prompt the pipeline actually assembles without calling the LLM, use preview:
