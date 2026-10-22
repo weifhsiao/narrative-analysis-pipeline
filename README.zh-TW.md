@@ -110,6 +110,8 @@ python -m scripts.import_prompts
 
 log 匯入會跳過 DB 已有的對話(同一條線、同一秒、同一發話者),匯出範圍重疊也能放心重匯。既有 DB 跑 `python -m util.migration` 補上對應的唯一索引(可重複執行;若已有重複資料會停下並說明)。
 
+更新到有新增欄位的版本(例如 `character_context.keywords`)後也跑一次 `python -m util.migration`:會替既有的表補上缺少的可為空欄位，不動資料。
+
 **4. 跑 eval**(讀取已入庫的範例結果，不重打 API，免金鑰)：
 
 範例結果對應的 `execution_id`(seed 依 `examples/results/` 檔名順序載入)：
