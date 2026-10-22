@@ -83,6 +83,33 @@
   .code-BLOCKED { color: #b26a00; font-weight: 600; }
   .code-ERROR { color: #c0392b; font-weight: 600; }
   .muted { color: #888; font-size: 12px; }
+  .back-btn { display: none; }
+  .ctx-toolbar { display: flex; gap: 8px; }
+  .row.sorting { display: flex; align-items: center; gap: 8px; cursor: default; }
+  .row.sorting:hover { background: transparent; }
+  .row.sorting .row-main { flex: 1; min-width: 0; }
+  .move-btns { display: flex; gap: 4px; }
+  .move-btns button { width: 40px; height: 36px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; }
+  .move-btns button:disabled { opacity: .3; cursor: default; }
+  button.sort-on { background: #3b5bdb; color: #fff; }
+
+  /* 手機:清單與編輯區二選一顯示,點一筆進編輯、「← 清單」返回 */
+  @media (max-width: 760px) {
+    header { flex-wrap: wrap; }
+    #toast { flex-basis: 100%; margin-left: 0; }
+    .split { display: block; height: auto; }
+    #listCol, #list { width: 100% !important; border-right: 0 !important; }
+    #detail { display: none; padding: 12px; }
+    body.mobile-detail #listCol { display: none !important; }
+    body.mobile-detail #detail { display: block; }
+    .back-btn { display: inline-block; margin-bottom: 8px; }
+    .inline { flex-direction: column; align-items: stretch; gap: 0; }
+    .chk { margin-top: 12px; }
+    form textarea { min-height: 55vh; }
+    /* iOS 對小於 16px 的輸入框會自動放大畫面 */
+    form input[type=text], form input[type=number], form textarea, header select { font-size: 16px; }
+    .row { padding: 12px 14px; }
+  }
 </style>
 </head>
 <body>
@@ -103,9 +130,10 @@
 <!-- ===== Context ===== -->
 <div id="panel-context" class="panel active">
   <div class="split">
-    <div style="width:340px; border-right:1px solid #ddd; display:flex; flex-direction:column;">
+    <div id="listCol" style="width:340px; border-right:1px solid #ddd; display:flex; flex-direction:column;">
       <div class="ctx-toolbar">
         <button type="button" class="act ghost" onclick="newContext()">＋ 新增 context</button>
+        <button type="button" class="act ghost" id="sortToggle" onclick="toggleSortMode()">排序</button>
       </div>
       <div id="list" style="flex:1; border:0;"><div class="empty">請先選擇角色</div></div>
     </div>
@@ -243,6 +271,7 @@ function onCharChange() {
     return;
   }
   lastCharId = sel.value;
+  document.body.classList.remove("mobile-detail");
   // 切角色時重置各 tab 的暫存畫面
   activeId = null; current = null;
   document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
@@ -267,20 +296,34 @@ async function loadList() {
       head.className = "group-head";
       head.innerHTML = `${escapeHtml(type)} <span class="muted">${group.length}</span>`;
       box.appendChild(head);
-      for (const it of group) {
+      group.forEach((it, n) => {
         const div = document.createElement("div");
-        div.className = "row" + (it.context_id === activeId ? " active" : "") + (it.is_active ? "" : " inactive");
+        div.className = "row" + (it.context_id === activeId ? " active" : "") + (it.is_active ? "" : " inactive")
+          + (sortMode ? " sorting" : "");
         div.dataset.id = it.context_id;
         div.innerHTML = `
-          <div class="title">${escapeHtml(it.title || "(無標題)")}</div>
-          <div class="meta">
-            <span>sort ${it.sort_order}</span>
-            <span>#${it.context_id}</span>
-            ${it.is_active ? "" : "<span class='badge off'>停用</span>"}
+          <div class="row-main">
+            <div class="title">${escapeHtml(it.title || "(無標題)")}</div>
+            <div class="meta">
+              <span>sort ${it.sort_order}</span>
+              <span>#${it.context_id}</span>
+              ${it.is_active ? "" : "<span class='badge off'>停用</span>"}
+            </div>
           </div>`;
-        div.onclick = () => { if (it.context_id !== activeId && confirmDiscard()) loadDetail(it.context_id); };
+        if (sortMode) {
+          const btns = document.createElement("div");
+          btns.className = "move-btns";
+          btns.innerHTML = `<button type="button" aria-label="上移" ${n === 0 ? "disabled" : ""}>↑</button>`
+            + `<button type="button" aria-label="下移" ${n === group.length - 1 ? "disabled" : ""}>↓</button>`;
+          const [up, down] = btns.querySelectorAll("button");
+          up.onclick = () => moveContext(it.context_id, type, -1);
+          down.onclick = () => moveContext(it.context_id, type, 1);
+          div.appendChild(btns);
+        } else {
+          div.onclick = () => { if (it.context_id !== activeId && confirmDiscard()) loadDetail(it.context_id); };
+        }
         box.appendChild(div);
-      }
+      });
     }
   } catch (e) { toast("載入清單失敗：" + e.message, "err"); }
 }
@@ -304,6 +347,7 @@ async function loadDetail(id) {
     current = await api(`/character_contexts/${id}`);
     activeId = id;
     renderDetail();
+    showDetailOnMobile();
     document.querySelectorAll("#list .row").forEach(r =>
       r.classList.toggle("active", Number(r.dataset.id) === id));
   } catch (e) { toast("載入詳情失敗：" + e.message, "err"); }
@@ -313,6 +357,7 @@ function renderDetail() {
   const c = current;
   const d = document.getElementById("detail");
   d.innerHTML = `
+    <button type="button" class="act ghost small back-btn" onclick="backToList()">← 清單</button>
     <div class="ro">context_id #${c.context_id} · character_id #${c.character_id}
       · 建立 ${fmt(c.created_at)} · 更新 ${fmt(c.updated_at)}</div>
     <form id="editForm" onsubmit="return false" oninput="updateDirty()" onchange="updateDirty()">
@@ -388,6 +433,7 @@ async function save() {
 
 function newContext() {
   if (!confirmDiscard()) return;
+  if (sortMode) toggleSortMode();
   const cid = charId();
   if (!cid) { toast("請先選擇角色", "err"); return; }
   const charLabel = document.getElementById("charSelect").selectedOptions[0].textContent;
@@ -395,6 +441,7 @@ function newContext() {
   document.querySelectorAll("#list .row").forEach(r => r.classList.remove("active"));
   const d = document.getElementById("detail");
   d.innerHTML = `
+    <button type="button" class="act ghost small back-btn" onclick="backToList()">← 清單</button>
     <div class="ro">新增 context · character ${escapeHtml(charLabel)}</div>
     <form id="createForm" onsubmit="return false" oninput="updateDirty()">
       <div class="inline">
@@ -425,11 +472,13 @@ function newContext() {
       </div>
     </form>`;
   updateCount(d.querySelector("[name=context_content]"));
+  showDetailOnMobile();
 }
 
 function cancelCreate() {
   if (!confirmDiscard()) return;
   document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
+  document.body.classList.remove("mobile-detail");
 }
 
 async function create() {
@@ -461,6 +510,73 @@ async function create() {
 function updateCount(el) {
   const span = document.getElementById("ccCount");
   if (span && el) span.textContent = el.value.length + " 字";
+}
+
+// ---------- 手機:清單/編輯區切換 ----------
+function showDetailOnMobile() {
+  if (document.body.classList.contains("mobile-detail")) return;
+  document.body.classList.add("mobile-detail");
+  if (window.matchMedia("(max-width: 760px)").matches) window.scrollTo(0, 0);
+}
+
+function backToList() {
+  if (!confirmDiscard()) return;
+  activeId = null; current = null;
+  document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
+  document.body.classList.remove("mobile-detail");
+  loadList();
+}
+
+// ---------- 排序模式 ----------
+// 清單上方「排序」切換:每行出現 ↑↓,點一下跟同類型的上一筆/下一筆對調;排序模式下點行不會打開編輯。
+// 進入前先走未儲存檢查並關掉編輯區,避免表單上的 sort_order 跟清單對不上。
+let sortMode = false;
+let moving = false;
+
+function toggleSortMode() {
+  if (!sortMode && !confirmDiscard()) return;
+  sortMode = !sortMode;
+  const btn = document.getElementById("sortToggle");
+  btn.textContent = sortMode ? "完成" : "排序";
+  btn.classList.toggle("sort-on", sortMode);
+  if (sortMode) {
+    activeId = null; current = null;
+    document.getElementById("detail").innerHTML = "<div class='empty'>排序模式：用 ↑↓ 調整同類型內的順序，完成後按「完成」</div>";
+    document.body.classList.remove("mobile-detail");
+  }
+  loadList();
+}
+
+// 依清單顯示順序重編整組 sort_order 為 0,1,2…,只送出有變的那幾筆;回傳更新筆數
+async function renumberGroup(group) {
+  const changed = group.map((it, n) => [it, n]).filter(([it, n]) => it.sort_order !== n);
+  for (const [it, n] of changed) {
+    await api(`/character_contexts/${it.context_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sort_order: n }),
+    });
+  }
+  return changed.length;
+}
+
+async function currentGroup(type) {
+  const items = await api(`/character_contexts/?character_id=${charId()}`);
+  return (groupByType(items).find(([t]) => t === type) || [null, []])[1];
+}
+
+async function moveContext(id, type, dir) {
+  if (moving) return;
+  moving = true;
+  try {
+    const group = await currentGroup(type);
+    const i = group.findIndex(it => it.context_id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= group.length) return;
+    [group[i], group[j]] = [group[j], group[i]];
+    await renumberGroup(group);
+  } catch (e) { toast("移動失敗：" + e.message, "err"); }
+  finally { moving = false; loadList(); }
 }
 
 // ---------- 未儲存保護 ----------
