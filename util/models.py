@@ -115,7 +115,7 @@ class CharacterContext(Base):
     context_content = Column(String, nullable=False)
     sort_order = Column(Integer, default=0)
     title = Column(String)
-    # 遊戲端的檢索關鍵字(RAG 觸發用),照輸入原樣存,例:「初遇、雨夜熱可可」。pipeline 不使用
+    # 遊戲端的檢索關鍵字(RAG 觸發用),照輸入原樣存,例:「初訪燈塔、潮汐表」。pipeline 不使用
     keywords = Column(String)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
