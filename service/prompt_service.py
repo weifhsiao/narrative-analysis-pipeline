@@ -16,7 +16,7 @@ from service.character_context_service import load_context
 _TAG_RE = re.compile(r"<(\w+)>.*?</\1>", re.DOTALL)
 
 # run 參數名：pipeline 傳進 load_prompt 的 run_params key 必須在這裡，lint 靠它判斷
-RUN_PARAM_NAMES = frozenset({"log_content"})
+RUN_PARAM_NAMES = frozenset({"log_content", "context_content", "existing_keywords", "character_names"})
 
 # lint 用：任一開/閉標籤、舊式 {name} 佔位、填空標籤名的字元規則
 _ANY_TAG_RE = re.compile(r"</?(\w+)>")

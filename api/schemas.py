@@ -124,6 +124,23 @@ class ContextListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class KeywordCandidate(BaseModel):
+    text: str
+    used_elsewhere: bool  # 同線其他段的關鍵字已用過
+    mentioned_elsewhere: bool  # 同線其他段的內容也有出現
+    has_name: bool  # 含角色名
+
+
+class KeywordSuggestionResponse(BaseModel):
+    candidates: list[KeywordCandidate]
+    max_chars: int  # 遊戲端欄位上限(含分隔符)
+    separator: str
+    model: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    warnings: list[str]
+
+
 class ContextResponse(ContextListItem):
     context_content: str
     keywords: str | None = None

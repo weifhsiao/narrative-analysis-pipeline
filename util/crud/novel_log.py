@@ -61,3 +61,14 @@ def get_novel_logs(
     # 少了 novel_log_id,SQLite 走唯一索引時會改成依 sender 字序,對話順序會反過來
     stmt = stmt.order_by(NovelLog.raw_log_time, NovelLog.novel_log_id)
     return db.execute(stmt).scalars().all()
+
+
+def get_senders(db: Session, character_id: int) -> list[str]:
+    # 這條線出現過的發話者(含系統訊息,如 Scene (start)),依字序
+    stmt = (
+        select(NovelLog.sender)
+        .where(NovelLog.character_id == character_id)
+        .distinct()
+        .order_by(NovelLog.sender)
+    )
+    return list(db.execute(stmt).scalars().all())

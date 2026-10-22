@@ -1,9 +1,19 @@
-from fastapi import APIRouter, Depends
+from dataclasses import asdict
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from api.errors import or_404
 from util.db_util import get_db
 from util.models import CharacterContext
-from api.schemas import ContextCreate, ContextUpdate, ContextResponse, ContextListItem
+from api.schemas import ContextCreate, ContextUpdate, ContextResponse, ContextListItem, KeywordSuggestionResponse
+from service.keyword_service import (
+    KEYWORD_SEPARATOR,
+    KEYWORDS_MAX_CHARS,
+    ContextNotFoundError,
+    suggest_keywords,
+)
+from service.prompt_service import PromptNotFoundError
+from util.ai_client import AIBlockedError
 from util.crud.character_context import (
     create_context,
     get_context,
@@ -39,3 +49,27 @@ def update(
 ):
     changes = context_update.model_dump(exclude_unset=True)  # 只拿前端真的有送的欄位
     return or_404(update_context(db, context_id, changes), "Context", context_id)
+
+
+# 遊戲檢索關鍵字建議:只回候選,不寫入(採用與否由使用者在 UI 決定後走 PATCH)
+@router.post("/{context_id}/suggest-keywords", response_model=KeywordSuggestionResponse)
+def suggest(context_id: int, db: Session = Depends(get_db)):
+    try:
+        result = suggest_keywords(db, context_id)
+    except ContextNotFoundError:
+        or_404(None, "Context", context_id)
+    except PromptNotFoundError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except AIBlockedError as e:
+        raise HTTPException(status_code=502, detail=f"AI 沒有回傳內容:{e}")
+    except Exception as e:  # provider 錯誤(金鑰、網路、額度)統一回 502,訊息給使用者看
+        raise HTTPException(status_code=502, detail=f"呼叫 AI 失敗:{e}")
+    return {
+        "candidates": [asdict(c) for c in result.candidates],
+        "max_chars": KEYWORDS_MAX_CHARS,
+        "separator": KEYWORD_SEPARATOR,
+        "model": result.usage.model,
+        "input_tokens": result.usage.input_tokens,
+        "output_tokens": result.usage.output_tokens,
+        "warnings": result.warnings,
+    }
