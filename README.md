@@ -30,15 +30,15 @@ flowchart TB
         Models["models (SQLAlchemy ORM)"]
     end
 
-    Prompts[("prompts/ *.txt")]
+    Prompts[("prompts/ *.txt<br/>(source to edit)")]
     DB[("SQLite")]
     Gemini[["Gemini API"]]
 
     API --> Service
     Service --> Parser
-    Service --> Prompts
     Service --> AIClient --> Gemini
     Service --> CRUD --> Models --> DB
+    Prompts -. "scripts.import_prompts (lint, new version)" .-> DB
     EvalScript -. "reads stored results directly (decoupled from pipeline)" .-> DB
 ```
 
@@ -49,7 +49,7 @@ flowchart TB
 | `util/` | Infrastructure: ai_client (provider abstraction + Gemini implementation), log parsing, DB connection, ORM models |
 | `util/crud/` | DAO layer: per-table data access; the caller is responsible for commit |
 
-Also: `prompts/` (plain-text prompt files, with system instruction and prompt sections separated) and `evals/` (rule functions + script entry).
+Also: `prompts/` (plain-text prompt sources, imported into the DB as versioned templates) and `evals/` (rule functions + script entry).
 
 **Dual-entry design**: batch/developer operations go through scripts (`service/novel_log_service.py`'s parsing entry, `evals/run_eval.py`), while service use and interactive testing go through the API (Swagger).
 
@@ -65,19 +65,23 @@ Eval doesn't run inside the generation flow; it's a separate developer tool. `ev
 - Adding or changing validation logic doesn't touch the pipeline itself
 - The entry point is a script, not an API endpoint — eval is a developer quality tool, not a product feature
 
-The current rule is `length_check` (an output length-limit check; `--execution-id` / `--limit` set via CLI). The rule set deliberately starts with the simplest single rule, to first prove out the "decoupled architecture + read-from-DB check" path; more rules and LLM-as-judge are in the Roadmap.
+The current rule is `length_check` (an output length-limit check; `--execution-id` via CLI; the limit comes from `--limit`, or from the `max_length` of the prompt version that produced the execution when one is set). The rule set deliberately starts with the simplest single rule, to first prove out the "decoupled architecture + read-from-DB check" path; more rules and LLM-as-judge are in the Roadmap.
 
 ### AI provider abstraction
 
 `ai_client` defines its interface via the `AIClient` abstract base class, with `GeminiClient` as the current sole implementation. Business logic depends only on the abstraction, so swapping or adding a model provider (e.g., a local Ollama) doesn't touch the service layer.
 
-### Prompts externalized as plain-text files
+### Prompts: plain-text source, versioned in the DB
 
-The prompts for the four analyses live as `.txt` files under `prompts/`, with `# system instruction` and `# prompt` sections separated. Prompt iteration is a high-frequency operation; externalizing it means wording changes don't require code changes, and diffs stay clean.
+Prompts are edited as `.txt` files under `prompts/` (`# system instruction` / `# prompt` sections, each header on its own line). Prompt iteration is a high-frequency operation; keeping the source as plain text means wording changes don't require code changes, and diffs stay clean.
+
+The pipeline reads prompts **only from the DB** (`prompt_template`). `python -m scripts.import_prompts` is the single write path: it lints each file (tags vs. known context types; errors block the save), skips files identical to the latest version, and otherwise appends a new version — templates are append-only, with versions of one prompt chained by `root_prompt_id` + `version`. **After editing a `.txt`, run the import for the change to take effect.**
+
+Context tags are filled at run time from data that can change later, so each execution also stores a snapshot of the system/prompt as filled with context (the `<log_content>` tag is left as-is; the log is rebuilt from the run's range), plus the model and token usage in provider-neutral fields.
 
 ### Schema reserves rerun traceability
 
-The `prompt_execution` table self-references via `parent_exec_id`: when a failed or low-quality execution is later rerun, the old and new executions can be chained into a traceable lineage rather than overwriting or breaking history. Analysis scope is defined by the `run` table's `range_type` / `range_start` / `range_end`, so the same character can have multiple analysis batches over different ranges.
+Each `prompt_execution` points to the exact prompt version it ran (`prompt_id`) and self-references via `parent_exec_id`: when a failed or low-quality execution is later rerun, the old and new executions can be chained into a traceable lineage rather than overwriting or breaking history. Analysis scope is defined by the `run` table's `range_type` / `range_start` / `range_end`, so the same character can have multiple analysis batches over different ranges.
 
 ## Quickstart
 
@@ -93,11 +97,21 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Initialize sample data (sample character, analysis batch, four pre-generated results; idempotent)
+# 2. Initialize sample data (sample character with fictional context, analysis batch,
+#    four pre-generated results; re-runnable while the DB holds only seed data)
 python -m scripts.seed
+
+# 3. Import prompts into the DB
+python -m scripts.import_prompts
 ```
 
-**3. Run eval** (reads stored sample results; no API call, no key needed):
+`scripts.seed` **wipes** the character / run / prompt_execution / novel_log / character_context tables before re-creating the sample. If the DB holds anything seed didn't create (another character, imported logs — including the sample log below — your own results, edited or deactivated context), it aborts without touching anything; add `--yes` only if you really want that data wiped.
+
+Upgrading an existing `data/novel.db` from before prompt versioning: run `python -m scripts.migrate_prompt_template --write` (backs up first), then `python -m scripts.import_prompts`.
+
+Log imports skip turns already in the DB (same thread, same second, same sender), so overlapping exports are safe to re-import. An existing DB gets the backing unique index with `python -m util.migration` (idempotent; stops with a message if duplicates already exist).
+
+**4. Run eval** (reads stored sample results; no API call, no key needed):
 
 The `execution_id` for each sample result (seed loads them in the filename order of `examples/results/`):
 
@@ -132,21 +146,32 @@ Open Swagger UI: <http://127.0.0.1:8000/docs>
 
 To see the prompt the pipeline actually assembles without calling the LLM, use preview:
 
-`POST /runs/{run_id}/preview` — assembles the four prompts for the seed-created analysis batch and writes them to `data/debug_log/{timestamp}/`. It **does not call Gemini and does not write to the database**; it returns the paths of the debug files written. It runs the same pipeline as `execute` below, differing only in that preview doesn't call the API or persist — so you can inspect the assembled prompt (system instruction and prompt separated, background context filled in) with no key.
+`POST /runs/{run_id}/preview` — assembles the pipeline prompts for the analysis batch and returns exactly what would be sent (system instruction and prompt separated, background context and log filled in; with `LOG_INPUT_MODE=attachment` the prompt carries a pointer to the attached file instead, and preview lists the attachment's name and size rather than the log text). It **does not call Gemini, write files, or write to the database**. It runs the same pipeline as `execute` below, differing only in that preview doesn't call the API or persist — so you can inspect the assembled prompt with no key.
+
+`POST /runs/1/preview` works right after the Quickstart (the seed ships fictional sample context for the relationship / scenario / timeline tags). Import the sample log first (above) if you want the story log filled in as well; otherwise `<log_content>` is empty.
 
 ### Optional: re-run generation yourself (Gemini API key required)
 
-The bundled analysis results were produced by this step. Re-generating them yourself requires your own key (note: the sample character context is not shipped with this repo, so a rerun's output will differ from the bundled results; full reproducibility is in the Roadmap):
+The bundled analysis results were produced by this step. Re-generating them yourself requires your own key (note: the bundled results were generated with different character context than the fictional sample context seed provides, so a rerun's output will differ from them; full reproducibility is in the Roadmap):
 
 ```bash
 cp .env.example .env   # fill in GEMINI_API_KEY
 ```
 
-`POST /runs/1/execute` — runs the four prompts for the seed-created analysis batch, calls Gemini, and writes the results to the `prompt_execution` table.
+`POST /runs/1/execute` — runs the pipeline prompts for the seed-created analysis batch, calls Gemini, and writes the results to the `prompt_execution` table (with prompt version, context snapshot, model and token usage).
 
 ![pipeline execution](docs/images/run_pipeline_success_case_req_res.png)
 
 ![summary result](docs/images/run_pipeline_success_case_db_row_data_summary.png)
+
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Tests run against in-memory SQLite and temp directories only: they never connect to `data/novel.db` (the attempt raises before the file is opened), never write any file under `data/`, and never call Gemini.
 
 ## Roadmap
 

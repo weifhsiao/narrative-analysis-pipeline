@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from api.errors import or_404
 from api.schemas import CharacterCreate, CharacterResponse
 from util.crud.character import get_character, get_all_characters, create_character
 from util.db_util import get_db
@@ -28,9 +29,5 @@ def get_all(db: Session = Depends(get_db)):
 @router.get("/{character_id}")
 def get_one_by_id(character_id: int, db: Session = Depends(get_db)):
 
-    character = get_character(db, character_id)
-
-    if character is None:
-        raise HTTPException(status_code=404, detail="Character not found.")
-
+    character = or_404(get_character(db, character_id), "Character", character_id)
     return CharacterResponse.model_validate(character)
