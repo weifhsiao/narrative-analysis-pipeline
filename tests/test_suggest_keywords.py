@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import service.keyword_service as keyword_service
-from service.keyword_service import split_keywords, suggest_keywords
+from service.keyword_service import parse_candidates, split_keywords, suggest_keywords
 from service.prompt_service import parse_prompt_file, save_prompt
 from tests.helpers import add_character
 from util.models import CharacterContext, NovelLog
@@ -15,7 +15,10 @@ PROMPT_FILE = Path(__file__).parent.parent / "prompts" / "keywords.txt"
 
 @pytest.fixture
 def ai(fake_ai, monkeypatch):
-    monkeypatch.setattr(keyword_service.ai_client, "get_client", lambda: fake_ai)
+    def get_client(model=None):
+        fake_ai.model_requested = model
+        return fake_ai
+    monkeypatch.setattr(keyword_service.ai_client, "get_client", get_client)
     return fake_ai
 
 
@@ -53,6 +56,32 @@ def setup(db):
 )
 def test_split_keywords_accepts_all_separators(raw, expected):
     assert split_keywords(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("具體詞：潮汐表、單程票\n事件標籤：初訪燈塔", [("潮汐表", "term"), ("單程票", "term"), ("初訪燈塔", "label")]),
+        ("具體詞:潮汐表\n事件標籤: 還書之約、潮汐表", [("潮汐表", "term"), ("還書之約", "label")]),  # 半形冒號、重複只留一次
+        ("好的,以下是結果\n具體詞：潮汐表\n事件標籤：初訪燈塔\n希望有幫助", [("潮汐表", "term"), ("初訪燈塔", "label")]),
+        ("潮汐表、單程票", [("潮汐表", "term"), ("單程票", "term")]),  # 沒照分行格式:全當具體詞
+    ],
+)
+def test_parse_candidates_splits_terms_and_labels(raw, expected):
+    assert parse_candidates(raw) == expected
+
+
+def test_keywords_use_their_own_model_and_thinking_level(db, ai, setup, monkeypatch):
+    ai.response = "具體詞：潮汐表、單程票、白沙嘴\n事件標籤：初訪燈塔"
+    monkeypatch.delenv("KEYWORDS_MODEL", raising=False)
+    monkeypatch.delenv("KEYWORDS_THINKING_LEVEL", raising=False)
+    result = suggest_keywords(db, setup)
+    assert (ai.model_requested, ai.calls[0]["thinking_level"]) == ("gemini-3.5-flash-lite", None)  # 預設
+    assert [c.kind for c in result.candidates] == ["term", "term", "term", "label"]
+    monkeypatch.setenv("KEYWORDS_MODEL", "gemini-3.8-flash")
+    monkeypatch.setenv("KEYWORDS_THINKING_LEVEL", "low")
+    suggest_keywords(db, setup)
+    assert (ai.model_requested, ai.calls[1]["thinking_level"]) == ("gemini-3.8-flash", "low")
 
 
 def test_prompt_gets_content_and_other_entries_keywords(db, ai, setup):

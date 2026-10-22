@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 import util.ai_client as ai_client
+from util import config
 from service.prompt_service import load_prompt
 from util.ai_client import TokenUsage
 from util.crud.character_context import get_context, get_contexts_by_character
@@ -22,6 +23,9 @@ MIN_CANDIDATES = 3  # 少於這個數量視為格式沒照做,重試一次
 
 # 讀取時三種分隔都接受(使用者手填可能混用),產生時一律用「、」
 _SPLIT_RE = re.compile(r"[、,，|｜\n]")
+# 模型輸出的兩行:「具體詞：…」「事件標籤：…」(冒號全半形都認)
+_LINE_RE = re.compile(r"^\s*(具體詞|事件標籤)\s*[:：]\s*(.*)$")
+TERM, LABEL = "term", "label"
 
 
 class ContextNotFoundError(LookupError):
@@ -31,6 +35,7 @@ class ContextNotFoundError(LookupError):
 @dataclass
 class Candidate:
     text: str
+    kind: str  # term = 具體詞,label = 事件標籤
     used_elsewhere: bool  # 同線其他段的關鍵字已經用過這個詞
     mentioned_elsewhere: bool  # 同線其他段的內容也有出現(反覆出現的主題,區別力低)
     has_name: bool  # 含角色名(單獨的角色名當關鍵字分不出是哪一段)
@@ -52,6 +57,24 @@ def split_keywords(text: str | None) -> list[str]:
             seen.add(word)
             out.append(word)
     return out
+
+
+def parse_candidates(text: str) -> list[tuple[str, str]]:
+    """模型輸出 → [(詞, kind)]。照「具體詞：」「事件標籤：」分行;沒有這兩個開頭(格式沒照做)時全部當具體詞。
+    同一個詞只留第一次出現。"""
+    lines = (text or "").splitlines()
+    matched = [m for m in (_LINE_RE.match(line) for line in lines) if m]
+    if matched:  # 有分行格式時只收那兩行,前後的客套話不算
+        chunks = [(TERM if m.group(1) == "具體詞" else LABEL, m.group(2)) for m in matched]
+    else:
+        chunks = [(TERM, line) for line in lines]
+    pairs, seen = [], set()
+    for kind, body in chunks:
+        for w in split_keywords(body):
+            if w not in seen:
+                seen.add(w)
+                pairs.append((w, kind))
+    return pairs
 
 
 def character_names(db: Session, character_id: int) -> list[str]:
@@ -88,28 +111,29 @@ def suggest_keywords(db: Session, context_id: int) -> KeywordSuggestion:
         },
     )
 
-    client = ai_client.get_client()
+    client = ai_client.get_client(config.keywords_model())
     warnings: list[str] = []
-    words: list[str] = []
+    pairs: list[tuple[str, str]] = []
     usage = TokenUsage()
     for _ in range(2):  # 格式沒照做(候選太少)重試一次
-        result = client.generate(rendered.prompt, rendered.system)
+        result = client.generate(rendered.prompt, rendered.system, thinking_level=config.keywords_thinking_level())
         usage = result.usage
-        words = [w for w in split_keywords(result.text) if len(w) <= CANDIDATE_MAX_CHARS]
-        if len(words) >= MIN_CANDIDATES:
+        pairs = [(w, k) for w, k in parse_candidates(result.text) if len(w) <= CANDIDATE_MAX_CHARS]
+        if len(pairs) >= MIN_CANDIDATES:
             break
     else:
-        warnings.append(f"AI 只給了 {len(words)} 個可用的候選詞")
+        warnings.append(f"AI 只給了 {len(pairs)} 個可用的候選詞")
 
     return KeywordSuggestion(
         candidates=[
             Candidate(
                 text=w,
+                kind=kind,
                 used_elsewhere=w in used_elsewhere,
                 mentioned_elsewhere=any(w in text for text in other_contents),
                 has_name=any(n in w for n in names),
             )
-            for w in words
+            for w, kind in pairs
         ],
         usage=usage,
         warnings=warnings,

@@ -126,6 +126,7 @@ class ContextListItem(BaseModel):
 
 class KeywordCandidate(BaseModel):
     text: str
+    kind: str  # term = 具體詞,label = 事件標籤
     used_elsewhere: bool  # 同線其他段的關鍵字已用過
     mentioned_elsewhere: bool  # 同線其他段的內容也有出現
     has_name: bool  # 含角色名

@@ -97,6 +97,8 @@
   .chip.on.common, .chip.on.named { color: #fff; }
   .chip.nofit { opacity: .45; }
   .kw-note { font-size: 12px; color: #888; margin-top: 4px; }
+  .chips .chip-head { font-size: 12px; color: #777; align-self: center; margin-right: 2px; }
+  .chip.label { border-radius: 4px; }
   .ctx-toolbar { display: flex; gap: 8px; }
   .row.sorting { display: flex; align-items: center; gap: 8px; cursor: default; }
   .row.sorting:hover { background: transparent; }
@@ -688,12 +690,22 @@ function renderKwTools() {
   count.classList.toggle("over", len > KW_MAX);
   const box = document.getElementById("kwChips");
   box.innerHTML = "";
-  for (const c of kwCandidates) {
+  // 具體詞在前、事件標籤另起一行
+  const groups = [["具體詞", kwCandidates.filter(c => c.kind !== "label")], ["事件標籤", kwCandidates.filter(c => c.kind === "label")]];
+  for (const [head, list] of groups) {
+    if (!list.length) continue;
+    const row = document.createElement("div");
+    row.className = "chips";
+    row.style.marginTop = "0";
+    row.style.width = "100%";
+    row.innerHTML = `<span class="chip-head">${head}</span>`;
+    box.appendChild(row);
+    for (const c of list) {
     const on = words.includes(c.text);
     const fits = on || len + (words.length ? KW_SEP.length : 0) + c.text.length <= KW_MAX;
     const chip = document.createElement("button");
     chip.type = "button";
-    chip.className = "chip" + (on ? " on" : "") + (c.used_elsewhere ? " reused" : "")
+    chip.className = "chip" + (c.kind === "label" ? " label" : "") + (on ? " on" : "") + (c.used_elsewhere ? " reused" : "")
       + (c.mentioned_elsewhere ? " common" : "") + (c.has_name ? " named" : "") + (fits ? "" : " nofit");
     chip.textContent = (on ? "✓ " : "") + c.text;
     chip.title = [
@@ -702,7 +714,8 @@ function renderKwTools() {
       c.has_name && "含角色名",
     ].filter(Boolean).join("；");
     chip.onclick = () => toggleKeyword(c.text);
-    box.appendChild(chip);
+    row.appendChild(chip);
+    }
   }
   document.getElementById("kwFillBtn").style.display = kwCandidates.length ? "" : "none";
   document.getElementById("kwNote").textContent = kwNote;
@@ -719,13 +732,20 @@ function toggleKeyword(word) {
 
 // 依排序挑有區別力的候選(略過其他事件用過、其他事件也提到、含角色名的),塞到 30 字為止;
 // 欄位原本有的保留在前面。被略過的詞仍可手動點選加入
+// 欄位裡還沒有事件標籤時,先預留第一個可用標籤的位置,具體詞補完再接上去
 function fillSuggested() {
   const words = splitKeywords(kwInput().value);
+  const usable = c => !(c.used_elsewhere || c.mentioned_elsewhere || c.has_name) && !words.includes(c.text);
+  const labels = kwCandidates.filter(c => c.kind === "label");
+  const hasLabel = labels.some(c => words.includes(c.text));
+  const label = hasLabel ? null : labels.find(usable);
+  const reserve = label ? label.text.length + KW_SEP.length : 0;
   for (const c of kwCandidates) {
-    if (c.used_elsewhere || c.mentioned_elsewhere || c.has_name || words.includes(c.text)) continue;
-    if ([...words, c.text].join(KW_SEP).length > KW_MAX) continue;
+    if (c.kind === "label" || !usable(c)) continue;
+    if ([...words, c.text].join(KW_SEP).length + reserve > KW_MAX) continue;
     words.push(c.text);
   }
+  if (label && [...words, label.text].join(KW_SEP).length <= KW_MAX) words.push(label.text);
   setKeywords(words);
 }
 
