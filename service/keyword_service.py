@@ -12,6 +12,7 @@ import util.ai_client as ai_client
 from service.prompt_service import load_prompt
 from util.ai_client import TokenUsage
 from util.crud.character_context import get_context, get_contexts_by_character
+from util.crud.novel_log import get_senders
 
 KEYWORD_PROMPT = "keywords"
 KEYWORD_SEPARATOR = "、"
@@ -30,7 +31,9 @@ class ContextNotFoundError(LookupError):
 @dataclass
 class Candidate:
     text: str
-    used_elsewhere: bool  # 同線其他段已經用過這個詞
+    used_elsewhere: bool  # 同線其他段的關鍵字已經用過這個詞
+    mentioned_elsewhere: bool  # 同線其他段的內容也有出現(反覆出現的主題,區別力低)
+    has_name: bool  # 含角色名(單獨的角色名當關鍵字分不出是哪一段)
 
 
 @dataclass
@@ -51,6 +54,11 @@ def split_keywords(text: str | None) -> list[str]:
     return out
 
 
+def character_names(db: Session, character_id: int) -> list[str]:
+    """這條線的角色名:log 的發話者扣掉系統訊息(Scene (start)、Environment (system) 這類帶括號的)。"""
+    return [s for s in get_senders(db, character_id) if "(" not in s]
+
+
 def _existing_keywords_text(others) -> str:
     lines = [f"- {c.title or '(無標題)'}：{c.keywords.strip()}" for c in others if (c.keywords or "").strip()]
     return "\n".join(lines) if lines else "(目前沒有)"
@@ -66,12 +74,18 @@ def suggest_keywords(db: Session, context_id: int) -> KeywordSuggestion:
         if c.context_id != ctx.context_id and c.is_active
     ]
     used_elsewhere = {w for c in others for w in split_keywords(c.keywords)}
+    other_contents = [c.context_content for c in others]
+    names = character_names(db, ctx.character_id)
 
     rendered = load_prompt(
         KEYWORD_PROMPT,
         db,
         ctx.character_id,
-        {"context_content": ctx.context_content, "existing_keywords": _existing_keywords_text(others)},
+        {
+            "context_content": ctx.context_content,
+            "existing_keywords": _existing_keywords_text(others),
+            "character_names": "、".join(names) if names else "(無)",
+        },
     )
 
     client = ai_client.get_client()
@@ -88,7 +102,15 @@ def suggest_keywords(db: Session, context_id: int) -> KeywordSuggestion:
         warnings.append(f"AI 只給了 {len(words)} 個可用的候選詞")
 
     return KeywordSuggestion(
-        candidates=[Candidate(text=w, used_elsewhere=w in used_elsewhere) for w in words],
+        candidates=[
+            Candidate(
+                text=w,
+                used_elsewhere=w in used_elsewhere,
+                mentioned_elsewhere=any(w in text for text in other_contents),
+                has_name=any(n in w for n in names),
+            )
+            for w in words
+        ],
         usage=usage,
         warnings=warnings,
     )

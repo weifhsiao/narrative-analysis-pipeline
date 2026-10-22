@@ -126,7 +126,9 @@ class ContextListItem(BaseModel):
 
 class KeywordCandidate(BaseModel):
     text: str
-    used_elsewhere: bool  # 同線其他段已用過
+    used_elsewhere: bool  # 同線其他段的關鍵字已用過
+    mentioned_elsewhere: bool  # 同線其他段的內容也有出現
+    has_name: bool  # 含角色名
 
 
 class KeywordSuggestionResponse(BaseModel):

@@ -92,6 +92,9 @@
     font-size: 13px; cursor: pointer; }
   .chip.on { background: #3b5bdb; border-color: #3b5bdb; color: #fff; }
   .chip.reused { border-style: dashed; color: #889; }
+  .chip.common { background: #fff; color: #889; }
+  .chip.named { text-decoration: line-through; color: #aaa; }
+  .chip.on.common, .chip.on.named { color: #fff; }
   .chip.nofit { opacity: .45; }
   .kw-note { font-size: 12px; color: #888; margin-top: 4px; }
   .ctx-toolbar { display: flex; gap: 8px; }
@@ -690,9 +693,14 @@ function renderKwTools() {
     const fits = on || len + (words.length ? KW_SEP.length : 0) + c.text.length <= KW_MAX;
     const chip = document.createElement("button");
     chip.type = "button";
-    chip.className = "chip" + (on ? " on" : "") + (c.used_elsewhere ? " reused" : "") + (fits ? "" : " nofit");
+    chip.className = "chip" + (on ? " on" : "") + (c.used_elsewhere ? " reused" : "")
+      + (c.mentioned_elsewhere ? " common" : "") + (c.has_name ? " named" : "") + (fits ? "" : " nofit");
     chip.textContent = (on ? "✓ " : "") + c.text;
-    chip.title = c.used_elsewhere ? "同一條線的其他事件已用過這個詞" : "";
+    chip.title = [
+      c.used_elsewhere && "其他事件的關鍵字已用過",
+      c.mentioned_elsewhere && "其他事件的內容也有提到（區別力低）",
+      c.has_name && "含角色名",
+    ].filter(Boolean).join("；");
     chip.onclick = () => toggleKeyword(c.text);
     box.appendChild(chip);
   }
@@ -709,11 +717,12 @@ function toggleKeyword(word) {
   setKeywords(next);
 }
 
-// 依排序挑候選,略過其他事件已用過的,塞到 30 字為止;欄位原本有的會保留在前面
+// 依排序挑有區別力的候選(略過其他事件用過、其他事件也提到、含角色名的),塞到 30 字為止;
+// 欄位原本有的保留在前面。被略過的詞仍可手動點選加入
 function fillSuggested() {
   const words = splitKeywords(kwInput().value);
   for (const c of kwCandidates) {
-    if (c.used_elsewhere || words.includes(c.text)) continue;
+    if (c.used_elsewhere || c.mentioned_elsewhere || c.has_name || words.includes(c.text)) continue;
     if ([...words, c.text].join(KW_SEP).length > KW_MAX) continue;
     words.push(c.text);
   }
@@ -730,7 +739,7 @@ async function suggestKeywords() {
     if (!current || current.context_id !== id) return;  // 等待期間換了別筆
     kwCandidates = r.candidates; kwFor = id;
     const used = r.input_tokens != null ? `（${r.model || "AI"}，輸入 ${r.input_tokens}、輸出 ${r.output_tokens} tokens）` : "";
-    kwNote = [`點選候選詞加入或移除；虛線＝其他事件已用過${used}`, ...r.warnings].join("　");
+    kwNote = [`點選候選詞加入或移除。虛線＝其他事件的關鍵字已用過；白底灰字＝其他事件內容也有提到；刪除線＝含角色名${used}`, ...r.warnings].join("　");
     renderKwTools();
   } catch (e) { toast("產生建議失敗：" + e.message, "err"); }
   finally {
