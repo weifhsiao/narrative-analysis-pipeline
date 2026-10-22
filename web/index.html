@@ -83,6 +83,27 @@
   .code-BLOCKED { color: #b26a00; font-weight: 600; }
   .code-ERROR { color: #c0392b; font-weight: 600; }
   .muted { color: #888; font-size: 12px; }
+  .back-btn { display: none; }
+  .sort-row { display: flex; gap: 6px; align-items: center; }
+  .sort-row input { flex: 1; }
+
+  /* 手機:清單與編輯區二選一顯示,點一筆進編輯、「← 清單」返回 */
+  @media (max-width: 760px) {
+    header { flex-wrap: wrap; }
+    #toast { flex-basis: 100%; margin-left: 0; }
+    .split { display: block; height: auto; }
+    #listCol, #list { width: 100% !important; border-right: 0 !important; }
+    #detail { display: none; padding: 12px; }
+    body.mobile-detail #listCol { display: none !important; }
+    body.mobile-detail #detail { display: block; }
+    .back-btn { display: inline-block; margin-bottom: 8px; }
+    .inline { flex-direction: column; align-items: stretch; gap: 0; }
+    .chk { margin-top: 12px; }
+    form textarea { min-height: 55vh; }
+    /* iOS 對小於 16px 的輸入框會自動放大畫面 */
+    form input[type=text], form input[type=number], form textarea, header select { font-size: 16px; }
+    .row { padding: 12px 14px; }
+  }
 </style>
 </head>
 <body>
@@ -103,7 +124,7 @@
 <!-- ===== Context ===== -->
 <div id="panel-context" class="panel active">
   <div class="split">
-    <div style="width:340px; border-right:1px solid #ddd; display:flex; flex-direction:column;">
+    <div id="listCol" style="width:340px; border-right:1px solid #ddd; display:flex; flex-direction:column;">
       <div class="ctx-toolbar">
         <button type="button" class="act ghost" onclick="newContext()">＋ 新增 context</button>
       </div>
@@ -243,6 +264,7 @@ function onCharChange() {
     return;
   }
   lastCharId = sel.value;
+  document.body.classList.remove("mobile-detail");
   // 切角色時重置各 tab 的暫存畫面
   activeId = null; current = null;
   document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
@@ -304,6 +326,7 @@ async function loadDetail(id) {
     current = await api(`/character_contexts/${id}`);
     activeId = id;
     renderDetail();
+    showDetailOnMobile();
     document.querySelectorAll("#list .row").forEach(r =>
       r.classList.toggle("active", Number(r.dataset.id) === id));
   } catch (e) { toast("載入詳情失敗：" + e.message, "err"); }
@@ -313,6 +336,7 @@ function renderDetail() {
   const c = current;
   const d = document.getElementById("detail");
   d.innerHTML = `
+    <button type="button" class="act ghost small back-btn" onclick="backToList()">← 清單</button>
     <div class="ro">context_id #${c.context_id} · character_id #${c.character_id}
       · 建立 ${fmt(c.created_at)} · 更新 ${fmt(c.updated_at)}</div>
     <form id="editForm" onsubmit="return false" oninput="updateDirty()" onchange="updateDirty()">
@@ -329,7 +353,11 @@ function renderDetail() {
       <div class="inline">
         <div>
           <label>sort_order</label>
-          <input type="number" name="sort_order" value="${c.sort_order}">
+          <div class="sort-row">
+            <input type="number" name="sort_order" value="${c.sort_order}">
+            <button type="button" class="act ghost small" onclick="moveContext(-1)" title="在同類型內上移">↑</button>
+            <button type="button" class="act ghost small" onclick="moveContext(1)" title="在同類型內下移">↓</button>
+          </div>
         </div>
         <div class="chk">
           <input type="checkbox" id="is_active" name="is_active" ${c.is_active ? "checked" : ""}>
@@ -395,6 +423,7 @@ function newContext() {
   document.querySelectorAll("#list .row").forEach(r => r.classList.remove("active"));
   const d = document.getElementById("detail");
   d.innerHTML = `
+    <button type="button" class="act ghost small back-btn" onclick="backToList()">← 清單</button>
     <div class="ro">新增 context · character ${escapeHtml(charLabel)}</div>
     <form id="createForm" onsubmit="return false" oninput="updateDirty()">
       <div class="inline">
@@ -425,11 +454,13 @@ function newContext() {
       </div>
     </form>`;
   updateCount(d.querySelector("[name=context_content]"));
+  showDetailOnMobile();
 }
 
 function cancelCreate() {
   if (!confirmDiscard()) return;
   document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
+  document.body.classList.remove("mobile-detail");
 }
 
 async function create() {
@@ -461,6 +492,47 @@ async function create() {
 function updateCount(el) {
   const span = document.getElementById("ccCount");
   if (span && el) span.textContent = el.value.length + " 字";
+}
+
+// ---------- 手機:清單/編輯區切換 ----------
+function showDetailOnMobile() {
+  if (document.body.classList.contains("mobile-detail")) return;
+  document.body.classList.add("mobile-detail");
+  if (window.matchMedia("(max-width: 760px)").matches) window.scrollTo(0, 0);
+}
+
+function backToList() {
+  if (!confirmDiscard()) return;
+  activeId = null; current = null;
+  document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
+  document.body.classList.remove("mobile-detail");
+  loadList();
+}
+
+// ---------- 同類型內上移/下移 ----------
+// 依清單顯示順序(同一組內)跟上一筆或下一筆對調,再把整組 sort_order 重編成 0,1,2…;
+// 只送出 sort_order 有變的那幾筆。編輯中有未儲存的變更時先擋,避免順序跟內容混在一起存。
+async function moveContext(dir) {
+  if (isDirty()) { toast("請先儲存或還原目前的修改，再移動順序", "err"); return; }
+  try {
+    const items = await api(`/character_contexts/?character_id=${charId()}`);
+    const group = (groupByType(items).find(([t]) => t === current.context_type) || [null, []])[1];
+    const i = group.findIndex(it => it.context_id === current.context_id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= group.length) { toast(dir < 0 ? "已經是第一筆" : "已經是最後一筆", ""); return; }
+    [group[i], group[j]] = [group[j], group[i]];
+    const changed = group.map((it, n) => [it, n]).filter(([it, n]) => it.sort_order !== n);
+    for (const [it, n] of changed) {
+      await api(`/character_contexts/${it.context_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sort_order: n }),
+      });
+    }
+    toast(`已${dir < 0 ? "上移" : "下移"}（更新 ${changed.length} 筆的 sort_order）`, "ok");
+    await loadList();
+    await loadDetail(current.context_id);
+  } catch (e) { toast("移動失敗：" + e.message, "err"); loadList(); }
 }
 
 // ---------- 未儲存保護 ----------

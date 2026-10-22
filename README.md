@@ -138,6 +138,8 @@ uvicorn api.app:app --reload
 
 Open Swagger UI: <http://127.0.0.1:8000/docs>
 
+The admin page is at <http://127.0.0.1:8000/> and works on a phone too. To open it from a phone on the same Wi-Fi, start the server with `--host 0.0.0.0` and visit `http://<your computer's LAN IP>:8000/`. There is no login: anyone on that network can edit, so only do this on a network you trust.
+
 ![Swagger UI](docs/images/Swagger.png)
 
 **Import a sample log**: `POST /novel_logs/import`, uploading `examples/sample_log.txt` (`character_id=1`; `user_name` can be any value — a field reserved for a future user mechanism). Returns the number of imported rows and writes to `novel_log`. This step demonstrates the parser and needs no API key.

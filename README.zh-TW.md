@@ -137,6 +137,8 @@ uvicorn api.app:app --reload
 
 開啟 Swagger UI:<http://127.0.0.1:8000/docs>
 
+管理頁在 <http://127.0.0.1:8000/>，手機也能用。要從同一個 Wi-Fi 的手機開，啟動時加 `--host 0.0.0.0`，再開 `http://<電腦的區網 IP>:8000/`。頁面沒有登入機制，同網路的任何人都能修改，只在信任的網路這樣用。
+
 ![Swagger UI](docs/images/Swagger.png)
 
 **匯入範例 log**`POST /novel_logs/import`，上傳 `examples/sample_log.txt`(`character_id=1`;`user_name` 任意值即可，為未來使用者機制預留的欄位)，回傳匯入筆數並寫入 `novel_log`。此步展示解析器，不需 API key。
