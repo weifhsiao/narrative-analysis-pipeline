@@ -48,7 +48,7 @@ def test_malformed_header_raises_with_line_no_and_reason(line, reason):
 
 def test_import_pairs_user_with_next_character_turn(db):
     cid = add_character(db)
-    assert parse_and_import(cid, "沈曉棠", LOG, db) == 3
+    assert parse_and_import(cid, "沈曉棠", LOG, db).inserted == 3
     rows = db.query(NovelLog).order_by(NovelLog.novel_log_id).all()
     assert [(r.sender, r.content) for r in rows] == [
         ("Scene (start)", "場景描述"),
@@ -80,12 +80,12 @@ def test_indented_timestamp_line_is_header(db):
     # 判定與解析都看 strip 後的行;舊版判定看原始行,縮排的時間戳行會被併進上一筆內文
     cid = add_character(db)
     log = "[2026-06-20 21:09:46] 顧望舒: 第一句\n  [2026-06-20 21:10:00] 顧望舒: 第二句\n"
-    assert parse_and_import(cid, "沈曉棠", log, db) == 2
+    assert parse_and_import(cid, "沈曉棠", log, db).inserted == 2
 
 
 def test_trailing_user_turn_without_reply_is_not_imported(db):
     # 既有行為:user 發話要等下一個角色回覆才一起入庫,檔尾沒有回覆的 user turn 不存
     cid = add_character(db)
     log = "[2026-06-20 21:09:46] 顧望舒: 回覆\n[2026-06-20 21:10:00] 沈曉棠: 還沒被回的話\n"
-    assert parse_and_import(cid, "沈曉棠", log, db) == 1
+    assert parse_and_import(cid, "沈曉棠", log, db).inserted == 1
     assert [r.sender for r in db.query(NovelLog)] == ["顧望舒"]

@@ -19,6 +19,18 @@ def insert_novel_logs(db: Session, novel_logs: list[NovelLog]) -> int:
     return len(novel_logs)
 
 
+def get_existing_log_keys(
+    db: Session, character_id: int, range_start: datetime, range_end: datetime
+) -> set[tuple[datetime, str]]:
+    # 去重用:時間範圍內既有的 (raw_log_time, sender)
+    stmt = select(NovelLog.raw_log_time, NovelLog.sender).where(
+        NovelLog.character_id == character_id,
+        NovelLog.raw_log_time >= range_start,
+        NovelLog.raw_log_time <= range_end,
+    )
+    return {(row.raw_log_time, row.sender) for row in db.execute(stmt)}
+
+
 def _coerce_dt(value: datetime | str | None) -> datetime | None:
     # 邊界可能是 datetime，也可能是 run 表 String 欄讀回來的字串。
     # 轉成 datetime 後綁定才會帶 .000000，與 raw_log_time 同精度可正確比較。
@@ -45,5 +57,7 @@ def get_novel_logs(
         stmt = stmt.where(NovelLog.raw_log_time >= range_start)
     if range_end is not None:
         stmt = stmt.where(NovelLog.raw_log_time <= range_end)
-    stmt = stmt.order_by(NovelLog.raw_log_time)
+    # 同一秒的(user 與角色回覆、Scene 與 Environment)照寫入順序排;
+    # 少了 novel_log_id,SQLite 走唯一索引時會改成依 sender 字序,對話順序會反過來
+    stmt = stmt.order_by(NovelLog.raw_log_time, NovelLog.novel_log_id)
     return db.execute(stmt).scalars().all()

@@ -108,6 +108,8 @@ python -m scripts.import_prompts
 
 既有的 `data/novel.db`(prompt 版本化之前建立)升級:先跑 `python -m scripts.migrate_prompt_template --write`(會先備份),再跑 `python -m scripts.import_prompts`。
 
+log 匯入會跳過 DB 已有的對話(同一條線、同一秒、同一發話者),匯出範圍重疊也能放心重匯。既有 DB 跑 `python -m util.migration` 補上對應的唯一索引(可重複執行;若已有重複資料會停下並說明)。
+
 **4. 跑 eval**(讀取已入庫的範例結果，不重打 API，免金鑰)：
 
 範例結果對應的 `execution_id`(seed 依 `examples/results/` 檔名順序載入)：
