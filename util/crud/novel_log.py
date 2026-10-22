@@ -59,3 +59,18 @@ def get_novel_logs(
         stmt = stmt.where(NovelLog.raw_log_time <= range_end)
     stmt = stmt.order_by(NovelLog.raw_log_time)
     return db.execute(stmt).scalars().all()
+
+
+def get_neighbor_logs(
+    db: Session, character_id: int, pivot: datetime, before: bool, limit: int = 20
+) -> list[NovelLog]:
+    # 斷層檢查用:pivot 之前(或之後)最近的幾則,由近到遠
+    if before:
+        stmt = select(NovelLog).where(
+            NovelLog.character_id == character_id, NovelLog.raw_log_time < pivot
+        ).order_by(NovelLog.raw_log_time.desc())
+    else:
+        stmt = select(NovelLog).where(
+            NovelLog.character_id == character_id, NovelLog.raw_log_time > pivot
+        ).order_by(NovelLog.raw_log_time)
+    return list(db.execute(stmt.limit(limit)).scalars().all())

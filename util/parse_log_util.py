@@ -80,3 +80,20 @@ def build_novel_log(character_id: int, block: dict) -> NovelLog:
     )
 
     return novel_log
+
+
+# 狀態欄開頭的頁碼:新格式 `> page.857｜…`,舊格式 `> P.174｜…`
+page_no_reg = re.compile(r"^>\s*(?:page|p)\.\s*(\d+)", re.IGNORECASE)
+
+
+def parse_page_no(content: str | None) -> int | None:
+    """訊息開頭有狀態欄就回頁碼,沒有(user 發話、少數無表頭的回覆)回 None。"""
+    if not content:
+        return None
+    match = page_no_reg.match(content.strip())
+    return int(match.group(1)) if match else None
+
+
+def clean_content(text: str) -> str:
+    """與 txt 匯入同一套清理:每行頭尾去空白、拿掉空行。"""
+    return "\n".join(line.strip() for line in text.splitlines() if line.strip())

@@ -11,12 +11,17 @@ from util.models import NovelLog
 class ImportResult:
     inserted: int
     skipped: int
+    # 同一次匯入的每一則共用這個 created_at,撈出或撤銷整批時當批號用;沒有新增時為 None
+    batch_created_at: datetime | None = None
 
 
 def insert_new_novel_logs(
-    db: Session, character_id: int, novel_logs: list[NovelLog]
+    db: Session, character_id: int, novel_logs: list[NovelLog], dry_run: bool = False
 ) -> ImportResult:
-    """所有 novel_log 寫入的共用入口:同線、同秒、同發話者已存在(或同批重複)就跳過。"""
+    """所有 novel_log 寫入的共用入口:同線、同秒、同發話者已存在(或同批重複)就跳過。
+
+    dry_run 只計算會新增幾則,不寫入。
+    """
     if not novel_logs:
         return ImportResult(inserted=0, skipped=0)
 
@@ -31,8 +36,15 @@ def insert_new_novel_logs(
         seen.add(key)
         new_logs.append(log)
 
+    skipped = len(novel_logs) - len(new_logs)
+    if dry_run or not new_logs:
+        return ImportResult(inserted=len(new_logs), skipped=skipped)
+
+    batch_created_at = datetime.now()
+    for log in new_logs:
+        log.created_at = batch_created_at
     inserted = insert_novel_logs(db, new_logs)
-    return ImportResult(inserted=inserted, skipped=len(novel_logs) - inserted)
+    return ImportResult(inserted=inserted, skipped=skipped, batch_created_at=batch_created_at)
 
 
 def parse_and_import(
@@ -113,7 +125,7 @@ def parse_and_import(
     )
 
     result = insert_new_novel_logs(db, character_id, novel_log_batch_insert_list)
-    print(f"新增[{result.inserted}]筆 記錄，略過已存在[{result.skipped}]筆")
+    print(f"新增[{result.inserted}]筆 記錄，略過已存在[{result.skipped}]筆，批號(created_at)[{result.batch_created_at}]")
     # db.commit() # db_util層的yield會commit
 
     print("log_parser finished.")

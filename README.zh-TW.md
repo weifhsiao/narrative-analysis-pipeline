@@ -141,6 +141,8 @@ uvicorn api.app:app --reload
 
 ![匯入範例 log](docs/images/log_parser_request.png)
 
+**匯入訊息清單**(與來源無關):任何能轉成 `{"messages": [{"sender", "time", "content"}]}` JSON 的來源，都可以走 `POST /novel_logs/import-messages?character_id=…` 或 `python -m scripts.import_messages <file.json> --character-id …`。兩者預設 dry-run:回報會新增/略過幾則，頁碼跟 DB 前後接不上時提醒;加 `dry_run=false` / `--write` 才寫入。帶時區的時間會換成本地時間(UTC+8)並截到秒，與 txt 匯入對得上。
+
 ### 選用：預覽 prompt 內容(免金鑰)
 
 想先看 pipeline 實際組出的 prompt、但不呼叫 LLM，可用 preview：

@@ -15,6 +15,31 @@ class CharacterResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)  # 讓 Pydantic 讀 ORM 物件
 
 
+class MessageIn(BaseModel):
+    sender: str
+    time: datetime  # 帶時區會換成台灣時間;不帶時區視為台灣時間
+    content: str
+
+
+class MessageImportRequest(BaseModel):
+    character_name: str | None = None  # 來源端的角色名,只用來提醒 character_id 是否選錯
+    messages: list[MessageIn]
+
+
+class MessageImportResponse(BaseModel):
+    character_id: int
+    character_name: str
+    source_character_name: str | None
+    total: int
+    inserted: int
+    skipped: int
+    dry_run: bool
+    batch_created_at: datetime | None
+    first_page: int | None
+    last_page: int | None
+    warnings: list[str]
+
+
 class NovelLogResponse(BaseModel):
     novel_log_id: int
     character_id: int

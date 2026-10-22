@@ -142,6 +142,8 @@ Open Swagger UI: <http://127.0.0.1:8000/docs>
 
 ![import sample log](docs/images/log_parser_request.png)
 
+**Import a message list** (source-agnostic): any source that can be turned into `{"messages": [{"sender", "time", "content"}]}` JSON goes through `POST /novel_logs/import-messages?character_id=…` or `python -m scripts.import_messages <file.json> --character-id …`. Both default to a dry run that reports how many turns would be added or skipped and warns when page numbers don't connect to the neighbouring turns in the DB; pass `dry_run=false` / `--write` to save. Timezone-aware times are converted to local time (UTC+8) and truncated to seconds so they match txt imports.
+
 ### Optional: preview prompt content (no key needed)
 
 To see the prompt the pipeline actually assembles without calling the LLM, use preview:
