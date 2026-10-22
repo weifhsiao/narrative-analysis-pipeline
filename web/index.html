@@ -392,6 +392,12 @@ function renderDetail() {
         <button type="button" class="act ghost" onclick="renderDetail()">還原</button>
         <span class="dirty-hint" id="dirty"></span>
       </div>
+      <div class="actions">
+        <button type="button" class="act ghost" onclick="duplicateContext()">複製成新的一筆</button>
+        <label style="margin:0; display:flex; align-items:center; gap:4px">
+          <input type="checkbox" id="dupDisable" checked> 同時停用這筆
+        </label>
+      </div>
     </form>`;
   updateCount(d.querySelector("[name=context_content]"));
 }
@@ -577,6 +583,52 @@ async function moveContext(id, type, dir) {
     await renumberGroup(group);
   } catch (e) { toast("移動失敗：" + e.message, "err"); }
   finally { moving = false; loadList(); }
+}
+
+// ---------- 複製成新的一筆 ----------
+// 改之前想留一份舊版時用:建立內容相同的新一筆(標題加「（新）」),排在原本那筆後面並打開它;
+// 勾「同時停用這筆」時舊的停用、沉到組尾,新的接手原本的位置。有未儲存的修改時先擋,避免複製到半成品。
+async function duplicateContext() {
+  if (isDirty()) { toast("請先儲存或還原目前的修改，再複製", "err"); return; }
+  const src = current;
+  const disableSrc = document.getElementById("dupDisable").checked;
+  try {
+    const before = await currentGroup(src.context_type);  // 複製前的顯示順序,用來決定新的一筆放哪
+    const body = {
+      character_id: src.character_id,
+      context_type: src.context_type,
+      context_content: src.context_content,
+      title: `${src.title || ""}（新）`,
+      sort_order: src.sort_order,
+    };
+    if (src.keywords) body.keywords = src.keywords;
+    const created = await api("/character_contexts/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (disableSrc) {
+      await api(`/character_contexts/${src.context_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: false }),
+      });
+    }
+    // 停用時新的接手原本那筆的位置、舊的沉到組尾;沒停用時新的放在正後方。再重編整組
+    const order = [...before];
+    const at = order.findIndex(it => it.context_id === src.context_id);
+    if (disableSrc) {
+      const [old] = order.splice(at, 1, created);
+      order.push(old);
+    } else {
+      order.splice(at + 1, 0, created);
+    }
+    await renumberGroup(order);
+    toast(`已建立 #${created.context_id}${disableSrc ? `，#${src.context_id} 已停用` : ""}`, "ok");
+    activeId = created.context_id;
+    await loadList();
+    await loadDetail(created.context_id);
+  } catch (e) { toast("複製失敗：" + e.message, "err"); loadList(); }
 }
 
 // ---------- 未儲存保護 ----------
