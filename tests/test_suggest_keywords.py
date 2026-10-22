@@ -15,7 +15,10 @@ PROMPT_FILE = Path(__file__).parent.parent / "prompts" / "keywords.txt"
 
 @pytest.fixture
 def ai(fake_ai, monkeypatch):
-    monkeypatch.setattr(keyword_service.ai_client, "get_client", lambda: fake_ai)
+    def get_client(model=None):
+        fake_ai.model_requested = model
+        return fake_ai
+    monkeypatch.setattr(keyword_service.ai_client, "get_client", get_client)
     return fake_ai
 
 
@@ -68,14 +71,17 @@ def test_parse_candidates_splits_terms_and_labels(raw, expected):
     assert parse_candidates(raw) == expected
 
 
-def test_keywords_use_configured_thinking_level(db, ai, setup, monkeypatch):
+def test_keywords_use_their_own_model_and_thinking_level(db, ai, setup, monkeypatch):
     ai.response = "具體詞：潮汐表、單程票、白沙嘴\n事件標籤：初訪燈塔"
+    monkeypatch.delenv("KEYWORDS_MODEL", raising=False)
+    monkeypatch.delenv("KEYWORDS_THINKING_LEVEL", raising=False)
     result = suggest_keywords(db, setup)
-    assert ai.calls[0]["thinking_level"] == "low"  # 預設
+    assert (ai.model_requested, ai.calls[0]["thinking_level"]) == ("gemini-3.5-flash-lite", None)  # 預設
     assert [c.kind for c in result.candidates] == ["term", "term", "term", "label"]
-    monkeypatch.setenv("KEYWORDS_THINKING_LEVEL", "")
+    monkeypatch.setenv("KEYWORDS_MODEL", "gemini-3.8-flash")
+    monkeypatch.setenv("KEYWORDS_THINKING_LEVEL", "low")
     suggest_keywords(db, setup)
-    assert ai.calls[1]["thinking_level"] is None  # 空字串 = 模型預設
+    assert (ai.model_requested, ai.calls[1]["thinking_level"]) == ("gemini-3.8-flash", "low")
 
 
 def test_prompt_gets_content_and_other_entries_keywords(db, ai, setup):

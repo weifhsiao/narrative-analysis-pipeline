@@ -68,10 +68,11 @@ class AIClient(ABC):
 
 class GeminiClient(AIClient):
 
-    def __init__(self):
+    def __init__(self, model: str | None = None):
         super().__init__()
         gemini_api_key = config.gemini_api_key()
-        self.model = config.gemini_model()
+        # 不指定 = GEMINI_MODEL(pipeline);功能可另指模型(例:關鍵字建議用 flash-lite,額度依模型分開算)
+        self.model = model or config.gemini_model()
         self.client = genai.Client(api_key=gemini_api_key)
 
     def generate(
@@ -207,10 +208,10 @@ def _format_response_diagnostics(response) -> str:
     )
 
 
-def get_client() -> AIClient:
+def get_client(model: str | None = None) -> AIClient:
     provider = config.ai_provider()
 
     if provider == "gemini":
-        return GeminiClient()
+        return GeminiClient(model)
     else:
         raise ValueError(f"Unknown provider: {provider}")

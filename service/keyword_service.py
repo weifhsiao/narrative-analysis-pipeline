@@ -111,7 +111,7 @@ def suggest_keywords(db: Session, context_id: int) -> KeywordSuggestion:
         },
     )
 
-    client = ai_client.get_client()
+    client = ai_client.get_client(config.keywords_model())
     warnings: list[str] = []
     pairs: list[tuple[str, str]] = []
     usage = TokenUsage()

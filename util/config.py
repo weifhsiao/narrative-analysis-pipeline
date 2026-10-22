@@ -42,9 +42,17 @@ def gemini_model() -> str:
     return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 
 
+DEFAULT_KEYWORDS_MODEL = "gemini-3.5-flash-lite"
+
+
+def keywords_model() -> str:
+    """關鍵字建議用的模型。跟 pipeline 分開:短任務用快的模型,也不吃 pipeline 模型的額度(額度依模型計)。"""
+    return os.getenv("KEYWORDS_MODEL") or DEFAULT_KEYWORDS_MODEL
+
+
 def keywords_thinking_level() -> str | None:
-    """關鍵字建議的思考程度(minimal/low/medium/high);空字串 = 用模型預設。"""
-    return os.getenv("KEYWORDS_THINKING_LEVEL", "low") or None
+    """關鍵字建議的思考程度(minimal/low/medium/high);沒設或空字串 = 用模型預設。"""
+    return os.getenv("KEYWORDS_THINKING_LEVEL") or None
 
 
 def log_input_mode() -> str:

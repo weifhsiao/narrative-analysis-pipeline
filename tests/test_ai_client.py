@@ -65,6 +65,13 @@ def gemini(monkeypatch):
     return ai_client.GeminiClient(), models
 
 
+def test_model_override_else_configured(monkeypatch):
+    monkeypatch.setattr(ai_client.genai, "Client", lambda api_key: SimpleNamespace(models=_FakeModels()))
+    monkeypatch.setenv("GEMINI_MODEL", "pipeline-model")
+    assert ai_client.GeminiClient().model == "pipeline-model"
+    assert ai_client.get_client("feature-model").model == "feature-model"
+
+
 def test_thinking_level_sets_thinking_config(gemini):
     client, models = gemini
     client.generate("p", "sys", thinking_level="low")
