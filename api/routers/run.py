@@ -32,8 +32,9 @@ def create(run_create: RunCreate, db: Session = Depends(get_db)):
     run = Run(
         character_id=run_create.character_id,
         range_type=run_create.range_type,
-        range_start=run_create.range_start,
-        range_end=run_create.range_end,
+        # run 表是 String 欄:明確轉成 `YYYY-MM-DD HH:MM:SS`,不靠 sqlite3 的預設 datetime 轉換
+        range_start=str(run_create.range_start),
+        range_end=str(run_create.range_end),
     )
     run = create_run(db, run)
 
