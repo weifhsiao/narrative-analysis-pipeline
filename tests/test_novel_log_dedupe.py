@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 import util.migration as migration
 from service.novel_log_service import insert_new_novel_logs, parse_and_import
 from tests.helpers import add_character
+from util.crud.novel_log import get_novel_logs
 from util.models import NovelLog
 
 LOG = """[2026-06-20 21:09:45] 沈曉棠: 我來了
@@ -53,6 +54,15 @@ def test_same_second_different_sender_is_not_duplicate(db):
         db, cid, [_log(cid, "2026-06-20 21:09:45", "沈曉棠"), _log(cid, "2026-06-20 21:09:45", "顧望舒")]
     )
     assert (result.inserted, result.skipped) == (2, 0)
+
+
+def test_same_second_turns_keep_import_order(db):
+    # 唯一索引含 sender:只照 raw_log_time 排序時 SQLite 會走索引、同秒改依 sender 字序
+    # (「瓦」排在「紀」前面 → 角色回覆跑到 user 發話前面)
+    cid = add_character(db)
+    log = "[2026-06-20 21:09:45] 紀琉昕: 先說\n[2026-06-20 21:09:45] 瓦萊里奧: 後回\n"
+    parse_and_import(cid, "紀琉昕", log, db)
+    assert [r.sender for r in get_novel_logs(db, cid)] == ["紀琉昕", "瓦萊里奧"]
 
 
 def test_other_character_thread_is_not_duplicate(db):
