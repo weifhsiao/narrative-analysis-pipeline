@@ -70,9 +70,9 @@ def get_neighbor_logs(
     if before:
         stmt = select(NovelLog).where(
             NovelLog.character_id == character_id, NovelLog.raw_log_time < pivot
-        ).order_by(NovelLog.raw_log_time.desc())
+        ).order_by(NovelLog.raw_log_time.desc(), NovelLog.novel_log_id.desc())
     else:
         stmt = select(NovelLog).where(
             NovelLog.character_id == character_id, NovelLog.raw_log_time > pivot
-        ).order_by(NovelLog.raw_log_time)
+        ).order_by(NovelLog.raw_log_time, NovelLog.novel_log_id)
     return list(db.execute(stmt.limit(limit)).scalars().all())
