@@ -396,8 +396,7 @@ function renderDetail() {
       </div>
       <label>keywords（遊戲檢索關鍵字）
         <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyField('keywords')">複製關鍵字</button></label>
-<<<<<<< HEAD
-      <input type="text" name="keywords" value="${escapeAttr(c.keywords || "")}" placeholder="例：初遇、雨夜熱可可" oninput="renderKwTools()">
+      <input type="text" name="keywords" value="${escapeAttr(c.keywords || "")}" placeholder="例：初訪燈塔、潮汐表" oninput="renderKwTools()">
       <div class="kw-tools">
         <span class="kw-count" id="kwCount"></span>
         <button type="button" class="act ghost small" id="kwSuggestBtn" onclick="suggestKeywords()">✨ 產生建議</button>
@@ -405,9 +404,6 @@ function renderDetail() {
       </div>
       <div class="chips" id="kwChips"></div>
       <div class="kw-note" id="kwNote"></div>
-=======
-      <input type="text" name="keywords" value="${escapeAttr(c.keywords || "")}" placeholder="例：初訪燈塔、潮汐表">
->>>>>>> origin/feat/context-duplicate
       <label>context_content <span class="cc-count" id="ccCount"></span>
         <button type="button" class="act ghost small" style="margin-left:8px" onclick="copyField('context_content')">複製內容</button></label>
       <textarea name="context_content" oninput="updateCount(this)">${escapeHtml(c.context_content)}</textarea>
