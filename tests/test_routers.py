@@ -45,3 +45,18 @@ def test_run_exec_cnt(client, db):
     listed = {r["run_id"]: r["exec_cnt"] for r in client.get("/runs/", params={"character_id": cid}).json()}
     assert listed == {busy: 2, idle: 0}
     assert other not in listed
+
+
+@pytest.mark.parametrize(
+    "sent, stored",
+    [
+        ("2026-07-30T09:51:33.307Z", "2026-07-30 17:51:33"),  # Swagger 預設:UTC + 毫秒(#14 的 run 2)
+        ("2026-07-30T17:51:33+08:00", "2026-07-30 17:51:33"),
+        ("2026-07-30 17:51:33", "2026-07-30 17:51:33"),  # 不帶時區視為台灣時間,原樣
+    ],
+)
+def test_run_range_is_stored_as_local_naive_seconds(client, db, sent, stored):
+    cid = add_character(db)
+    body = {"character_id": cid, "range_type": 1, "range_start": sent, "range_end": sent}
+    run = client.post("/runs/", json=body).json()
+    assert (run["range_start"], run["range_end"]) == (stored, stored)

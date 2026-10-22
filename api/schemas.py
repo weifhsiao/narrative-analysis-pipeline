@@ -1,6 +1,6 @@
 import re
 from pydantic import BaseModel, ConfigDict, field_validator
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from util.models import CONTEXT_TYPE_PATTERN
 
 
@@ -26,11 +26,24 @@ class NovelLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)  # 讓 Pydantic 讀 ORM 物件
 
 
+# log 的時間一律是台灣本地時間(無時區);台灣沒有日光節約,固定 +8
+LOG_TIMEZONE = timezone(timedelta(hours=8))
+
+
 class RunCreate(BaseModel):
     character_id: int
     range_type: int
     range_start: datetime
     range_end: datetime
+
+    # 範圍要跟 raw_log_time 比:帶時區的(例如 Swagger 預設的 UTC `...Z`)換成台灣時間再拿掉時區,
+    # 並截到秒,存進 run 表的字串才會跟其他筆同一種格式(#14)
+    @field_validator("range_start", "range_end")
+    @classmethod
+    def _to_local_naive(cls, v: datetime) -> datetime:
+        if v.tzinfo is not None:
+            v = v.astimezone(LOG_TIMEZONE).replace(tzinfo=None)
+        return v.replace(microsecond=0)
 
 
 class RunResponse(BaseModel):
