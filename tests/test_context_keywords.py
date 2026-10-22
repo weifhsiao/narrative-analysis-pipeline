@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, inspect
 import util.migration as migration
 from tests.helpers import add_character
 
-KEYWORDS = "初遇、靜電體質、雨夜熱可可"
+KEYWORDS = "初訪燈塔、潮汐表、單程票"
 
 
 def _create(client, cid, **extra):
@@ -28,8 +28,8 @@ def test_keywords_optional(client, db):
 def test_patch_keywords_only_touches_keywords(client, db):
     cid = add_character(db)
     created = _create(client, cid, title="標題")
-    res = client.patch(f"/character_contexts/{created['context_id']}", json={"keywords": "交換本名"}).json()
-    assert (res["keywords"], res["title"], res["context_content"]) == ("交換本名", "標題", "內容")
+    res = client.patch(f"/character_contexts/{created['context_id']}", json={"keywords": "還書之約"}).json()
+    assert (res["keywords"], res["title"], res["context_content"]) == ("還書之約", "標題", "內容")
 
     cleared = client.patch(f"/character_contexts/{created['context_id']}", json={"keywords": ""}).json()
     assert cleared["keywords"] == ""
