@@ -49,6 +49,10 @@ class AIBlockedError(Exception):
         self.usage = usage
 
 
+# provider 中立的思考程度;None = 用模型預設。各 provider 自行對應(不支援的值由 provider 報錯)
+THINKING_LEVELS = ("minimal", "low", "medium", "high")
+
+
 class AIClient(ABC):
 
     @abstractmethod
@@ -57,6 +61,7 @@ class AIClient(ABC):
         prompt: str,
         system_instruction: str,
         attachments: list[Attachment] | None = None,
+        thinking_level: str | None = None,
     ) -> GenerateResult:
         pass
 
@@ -74,13 +79,17 @@ class GeminiClient(AIClient):
         prompt: str,
         system_instruction: str,
         attachments: list[Attachment] | None = None,
+        thinking_level: str | None = None,
     ) -> GenerateResult:
-        # 未來可以把think level放進.env，目前覺得預設就夠用
-        config = (
-            types.GenerateContentConfig(system_instruction=system_instruction)
-            if system_instruction
-            else None
-        )
+        # 思考程度由呼叫端決定(pipeline 不指定=模型預設;短任務如關鍵字建議可調低換速度)
+        if thinking_level is not None and thinking_level not in THINKING_LEVELS:
+            raise ValueError(f"thinking_level 只能是 {THINKING_LEVELS}:{thinking_level}")
+        options = {}
+        if system_instruction:
+            options["system_instruction"] = system_instruction
+        if thinking_level:
+            options["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level.upper())
+        config = types.GenerateContentConfig(**options) if options else None
 
         if attachments:
             # 夾檔模式:檔案 part 放前面、指令文字放後面(長文件在前、query 在後)

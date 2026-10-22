@@ -42,6 +42,11 @@ def gemini_model() -> str:
     return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 
 
+def keywords_thinking_level() -> str | None:
+    """關鍵字建議的思考程度(minimal/low/medium/high);空字串 = 用模型預設。"""
+    return os.getenv("KEYWORDS_THINKING_LEVEL", "low") or None
+
+
 def log_input_mode() -> str:
     """log 輸入模式:inline(純文字內嵌,預設) / attachment(夾檔)。"""
     return os.getenv("LOG_INPUT_MODE", "inline")

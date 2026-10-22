@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import service.keyword_service as keyword_service
-from service.keyword_service import split_keywords, suggest_keywords
+from service.keyword_service import parse_candidates, split_keywords, suggest_keywords
 from service.prompt_service import parse_prompt_file, save_prompt
 from tests.helpers import add_character
 from util.models import CharacterContext, NovelLog
@@ -53,6 +53,29 @@ def setup(db):
 )
 def test_split_keywords_accepts_all_separators(raw, expected):
     assert split_keywords(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("具體詞：潮汐表、單程票\n事件標籤：初訪燈塔", [("潮汐表", "term"), ("單程票", "term"), ("初訪燈塔", "label")]),
+        ("具體詞:潮汐表\n事件標籤: 還書之約、潮汐表", [("潮汐表", "term"), ("還書之約", "label")]),  # 半形冒號、重複只留一次
+        ("好的,以下是結果\n具體詞：潮汐表\n事件標籤：初訪燈塔\n希望有幫助", [("潮汐表", "term"), ("初訪燈塔", "label")]),
+        ("潮汐表、單程票", [("潮汐表", "term"), ("單程票", "term")]),  # 沒照分行格式:全當具體詞
+    ],
+)
+def test_parse_candidates_splits_terms_and_labels(raw, expected):
+    assert parse_candidates(raw) == expected
+
+
+def test_keywords_use_configured_thinking_level(db, ai, setup, monkeypatch):
+    ai.response = "具體詞：潮汐表、單程票、白沙嘴\n事件標籤：初訪燈塔"
+    result = suggest_keywords(db, setup)
+    assert ai.calls[0]["thinking_level"] == "low"  # 預設
+    assert [c.kind for c in result.candidates] == ["term", "term", "term", "label"]
+    monkeypatch.setenv("KEYWORDS_THINKING_LEVEL", "")
+    suggest_keywords(db, setup)
+    assert ai.calls[1]["thinking_level"] is None  # 空字串 = 模型預設
 
 
 def test_prompt_gets_content_and_other_entries_keywords(db, ai, setup):

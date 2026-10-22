@@ -39,9 +39,11 @@ class FakeAIClient(AIClient):
         prompt: str,
         system_instruction: str,
         attachments: list[Attachment] | None = None,
+        thinking_level: str | None = None,
     ) -> GenerateResult:
         self.calls.append(
-            {"prompt": prompt, "system": system_instruction, "attachments": attachments}
+            {"prompt": prompt, "system": system_instruction, "attachments": attachments,
+             "thinking_level": thinking_level}
         )
         if isinstance(self.response, Exception):
             raise self.response
