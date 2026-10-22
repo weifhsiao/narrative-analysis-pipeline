@@ -58,11 +58,11 @@ def test_same_second_different_sender_is_not_duplicate(db):
 
 def test_same_second_turns_keep_import_order(db):
     # 唯一索引含 sender:只照 raw_log_time 排序時 SQLite 會走索引、同秒改依 sender 字序
-    # (「瓦」排在「紀」前面 → 角色回覆跑到 user 發話前面)
+    # (B 排在 Z 前面 → 角色回覆跑到 user 發話前面)
     cid = add_character(db)
-    log = "[2026-06-20 21:09:45] 紀琉昕: 先說\n[2026-06-20 21:09:45] 瓦萊里奧: 後回\n"
-    parse_and_import(cid, "紀琉昕", log, db)
-    assert [r.sender for r in get_novel_logs(db, cid)] == ["紀琉昕", "瓦萊里奧"]
+    log = "[2026-06-20 21:09:45] Z: 先說\n[2026-06-20 21:09:45] B: 後回\n"
+    parse_and_import(cid, "Z", log, db)
+    assert [r.sender for r in get_novel_logs(db, cid)] == ["Z", "B"]
 
 
 def test_other_character_thread_is_not_duplicate(db):
