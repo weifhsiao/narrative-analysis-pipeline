@@ -11,6 +11,9 @@ from util.models import NovelLog
 class ImportResult:
     inserted: int
     skipped: int
+    # 整批(不只新增的)的頭尾時間:重複匯入全被略過時,UI 照樣拿得到這篇的範圍
+    range_start: datetime | None = None
+    range_end: datetime | None = None
 
 
 def insert_new_novel_logs(
@@ -21,7 +24,8 @@ def insert_new_novel_logs(
         return ImportResult(inserted=0, skipped=0)
 
     times = [log.raw_log_time for log in novel_logs]
-    seen = get_existing_log_keys(db, character_id, min(times), max(times))
+    range_start, range_end = min(times), max(times)
+    seen = get_existing_log_keys(db, character_id, range_start, range_end)
 
     new_logs = []
     for log in novel_logs:
@@ -32,7 +36,12 @@ def insert_new_novel_logs(
         new_logs.append(log)
 
     inserted = insert_novel_logs(db, new_logs)
-    return ImportResult(inserted=inserted, skipped=len(novel_logs) - inserted)
+    return ImportResult(
+        inserted=inserted,
+        skipped=len(novel_logs) - inserted,
+        range_start=range_start,
+        range_end=range_end,
+    )
 
 
 def parse_and_import(
