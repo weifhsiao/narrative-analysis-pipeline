@@ -77,6 +77,24 @@
   th, td { border: 1px solid #e3e3e3; padding: 5px 8px; text-align: left; vertical-align: top; }
   th { background: #f6f6f6; position: sticky; top: 0; }
   td.content { max-width: 480px; white-space: pre-wrap; word-break: break-word; }
+
+  /* logs: 選取範圍、排序、跳頂底 */
+  .log-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .log-tools { display: flex; gap: 10px; align-items: center; }
+  td.pick { white-space: nowrap; }
+  td.pick button { padding: 2px 6px; font-size: 11px; border: 1px solid #c9cfe8; background: #fff; border-radius: 3px; cursor: pointer; }
+  td.pick button:hover { background: #e7edff; }
+  /* 有滑鼠的裝置滑過才顯示起／終,觸控裝置一直顯示 */
+  @media (hover: hover) {
+    td.pick button { visibility: hidden; }
+    tr:hover td.pick button { visibility: visible; }
+  }
+  tr.in-range td { background: #f5f7ff; }
+  tr.edge td { background: #dfe6ff; }
+  .jump { position: fixed; right: 16px; bottom: 16px; display: none; flex-direction: column; gap: 6px; z-index: 5; }
+  .jump.show { display: flex; }
+  .jump button { width: 40px; height: 40px; font-size: 18px; border: 1px solid #ccc; border-radius: 50%;
+    background: #fff; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
   pre.exec { background: #f7f7f9; border: 1px solid #e3e3e3; border-radius: 4px; padding: 10px; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow-y: auto; font-size: 12px; }
   .code-SUCCESS { color: #197a3a; font-weight: 600; }
   .code-PREVIEW { color: #666; font-weight: 600; }
@@ -172,7 +190,8 @@
     <span id="importResult" class="muted"></span>
   </div>
   <div class="section" style="border-bottom:0;">
-    <h2>查詢 log</h2>
+    <h2>查詢 log／選取範圍</h2>
+    <div class="muted" style="margin-bottom:8px;">匯入後自動帶入這篇的頭尾；也可在表格點「起／終」圈一段。留空＝查全部。</div>
     <div class="field">
       <label>range_start（選填）</label>
       <input type="text" id="logStart" placeholder="YYYY-MM-DD HH:MM:SS" autocomplete="off">
@@ -181,9 +200,20 @@
       <label>range_end（選填）</label>
       <input type="text" id="logEnd" placeholder="YYYY-MM-DD HH:MM:SS" autocomplete="off">
     </div>
-    <button type="button" class="act ghost" onclick="queryLogs()">查詢</button>
-    <span id="logCount" class="muted"></span>
-    <div id="logTable" class="tablewrap" style="margin-top:12px;"></div>
+    <div class="log-actions">
+      <button type="button" class="act ghost" onclick="queryLogs()">查詢這段</button>
+      <button type="button" class="act primary" onclick="selectionToRun()">用這段建 run →</button>
+      <button type="button" class="act ghost" onclick="clearSelection()">清除</button>
+    </div>
+    <div class="log-tools">
+      <span id="logCount" class="muted"></span>
+      <button type="button" id="logOrderBtn" class="act ghost small" onclick="toggleLogOrder()" title="目前排序，點一下切換">新→舊</button>
+    </div>
+    <div id="logTable" class="tablewrap" style="margin-top:8px;"></div>
+  </div>
+  <div id="logJump" class="jump">
+    <button type="button" onclick="jumpLogs('top')" title="跳到頂">↑</button>
+    <button type="button" onclick="jumpLogs('bottom')" title="跳到底">↓</button>
   </div>
 </div>
 
@@ -290,8 +320,9 @@ function onCharChange() {
   // 切角色時重置各 tab 的暫存畫面
   activeId = null; current = null;
   document.getElementById("detail").innerHTML = "<div class='empty'>從左側選一筆 context</div>";
-  document.getElementById("logTable").innerHTML = "";
-  document.getElementById("logCount").textContent = "";
+  // 時間範圍屬於上一個角色,一併清掉
+  logsCache = null;
+  clearSelection();
   document.getElementById("runResult").innerHTML = "<div class='muted'>按某筆 run 的 preview 或 execute，結果會顯示在這裡。</div>";
   if (currentTab === "context") loadList();
   else if (currentTab === "runs") loadRuns();
@@ -835,10 +866,20 @@ async function importLog() {
       method: "POST", body: fd,
     });
     const skipped = r.skipped_cnt ? `，略過已存在 ${r.skipped_cnt} 筆` : "";
-    out.textContent = `匯入 ${r.import_cnt} 筆${skipped}`;
+    const range = r.range_start ? `（${fmt(r.range_start)} ～ ${fmt(r.range_end)}）` : "";
+    out.textContent = `匯入 ${r.import_cnt} 筆${skipped}${range}`;
     toast(`匯入成功：${r.import_cnt} 筆${skipped}`, "ok");
+    // 這篇的頭尾直接當選取範圍,順手查出來看
+    if (r.range_start) {
+      document.getElementById("logStart").value = fmt(r.range_start);
+      document.getElementById("logEnd").value = fmt(r.range_end);
+      queryLogs();
+    }
   } catch (e) { out.textContent = ""; toast("匯入失敗：" + e.message, "err"); }
 }
+
+let logsCache = null;    // 最近一次查詢結果(API 回來是舊→新);null = 還沒查
+let logNewestFirst = true;
 
 async function queryLogs() {
   const cid = charId();
@@ -850,27 +891,91 @@ async function queryLogs() {
   if (e) qs.set("range_end", e);
   try {
     const logs = await api(`/novel_logs/?${qs.toString()}`);
-    document.getElementById("logCount").textContent = `${logs.length} 筆`;
-    renderLogTable(logs);
+    if (charId() !== cid) return;  // 查詢途中切了角色:丟掉舊角色的結果
+    logsCache = logs;
+    renderLogTable();
   } catch (err) { toast("查詢失敗：" + err.message, "err"); }
 }
 
-function renderLogTable(logs) {
+function renderLogTable() {
   const box = document.getElementById("logTable");
-  if (!logs.length) { box.innerHTML = "<div class='empty'>無資料</div>"; return; }
+  const count = document.getElementById("logCount");
+  const jump = document.getElementById("logJump");
+  if (logsCache === null) { box.innerHTML = ""; count.textContent = ""; jump.classList.remove("show"); return; }
+  count.textContent = `${logsCache.length} 筆`;
+  jump.classList.toggle("show", logsCache.length > 0);
+  if (!logsCache.length) { box.innerHTML = "<div class='empty'>無資料</div>"; return; }
+  // 起訖欄位的值拿來標示目前圈到的範圍;正規化後同格式,字串比較即時間比較
+  const s = normalizeDateTime(document.getElementById("logStart").value);
+  const e = normalizeDateTime(document.getElementById("logEnd").value);
+  const logs = logNewestFirst ? [...logsCache].reverse() : logsCache;
   let html = `<table><thead><tr>
-    <th>id</th><th>raw_log_time</th><th>sender</th><th>content</th>
+    <th>範圍</th><th>id</th><th>raw_log_time</th><th>sender</th><th>content</th>
   </tr></thead><tbody>`;
   for (const l of logs) {
-    html += `<tr>
+    const t = fmt(l.raw_log_time);
+    const nt = normalizeDateTime(t);
+    const cls = nt === s || nt === e ? "edge" : (s && e && nt > s && nt < e ? "in-range" : "");
+    html += `<tr class="${cls}">
+      <td class="pick">
+        <button type="button" onclick="pickLogTime('logStart','${t}')">起</button>
+        <button type="button" onclick="pickLogTime('logEnd','${t}')">終</button>
+      </td>
       <td>${l.novel_log_id}</td>
-      <td>${fmt(l.raw_log_time)}</td>
+      <td>${t}</td>
       <td>${escapeHtml(l.sender)}</td>
       <td class="content">${escapeHtml(l.content || "")}</td>
     </tr>`;
   }
   html += "</tbody></table>";
   box.innerHTML = html;
+}
+
+// 起點晚於終點就對調(新→舊排序下容易點反,手打也可能打反)
+function orderSelection() {
+  const startEl = document.getElementById("logStart");
+  const endEl = document.getElementById("logEnd");
+  const s = normalizeDateTime(startEl.value), e = normalizeDateTime(endEl.value);
+  if (s && e && s > e) [startEl.value, endEl.value] = [endEl.value, startEl.value];
+}
+
+function pickLogTime(id, time) {
+  document.getElementById(id).value = time;
+  orderSelection();
+  renderLogTable();  // 只更新標示,不重查,畫面位置不跳
+}
+
+function clearSelection() {
+  document.getElementById("logStart").value = "";
+  document.getElementById("logEnd").value = "";
+  renderLogTable();
+}
+
+function toggleLogOrder() {
+  logNewestFirst = !logNewestFirst;
+  document.getElementById("logOrderBtn").textContent = logNewestFirst ? "新→舊" : "舊→新";
+  renderLogTable();
+}
+
+// 跳頂停在查詢區開頭(起訖欄與「用這段建 run」看得到),跳底到表格最後一列
+function jumpLogs(where) {
+  const table = document.getElementById("logTable");
+  if (where === "top") table.closest(".section").scrollIntoView({ block: "start" });
+  else table.scrollIntoView({ block: "end" });
+}
+
+// 帶著目前範圍去 Runs 頁籤,建立仍由使用者按
+function selectionToRun() {
+  orderSelection();
+  const s = document.getElementById("logStart").value.trim();
+  const e = document.getElementById("logEnd").value.trim();
+  if (!s || !e) { toast("起點、終點都要有才能建 run", "err"); return; }
+  document.getElementById("runStart").value = s;
+  document.getElementById("runEnd").value = e;
+  document.getElementById("runType").value = "1";
+  switchTab("runs");
+  window.scrollTo(0, 0);
+  toast("已帶入範圍，確認後按「建立 run」", "ok");
 }
 
 // ========== Runs tab ==========
@@ -1014,6 +1119,7 @@ function dtValue(id) {
   el.addEventListener("change", () => {
     const norm = normalizeDateTime(el.value);
     if (norm) el.value = norm;
+    if (id === "logStart" || id === "logEnd") renderLogTable();  // 手改起訖也更新表格標示
   });
 });
 

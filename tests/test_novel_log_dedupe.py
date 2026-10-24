@@ -99,7 +99,30 @@ def test_router_reports_skipped(client, db):
     files = {"file": ("log.txt", LOG.encode())}
     client.post("/novel_logs/import", params=params, files=files)
     res = client.post("/novel_logs/import", params=params, files={"file": ("log.txt", LOG.encode())})
-    assert res.json() == {"import_cnt": 0, "skipped_cnt": 2}
+    # 全被略過也回這篇的頭尾,UI 才能直接帶去查詢/建 run
+    assert res.json() == {
+        "import_cnt": 0,
+        "skipped_cnt": 2,
+        "range_start": "2026-06-20T21:09:45",
+        "range_end": "2026-06-20T21:09:46",
+    }
+
+
+def test_import_range_covers_whole_file_not_only_new_turns(db):
+    cid = add_character(db)
+    parse_and_import(cid, "沈曉棠", LOG, db)
+    result = parse_and_import(cid, "沈曉棠", LOG_OVERLAP, db)
+    assert (result.range_start, result.range_end) == (
+        datetime(2026, 6, 20, 21, 9, 45),
+        datetime(2026, 6, 20, 21, 12, 1),
+    )
+
+
+def test_router_empty_file_has_no_range(client, db):
+    cid = add_character(db)
+    params = {"character_id": cid, "user_name": "沈曉棠"}
+    res = client.post("/novel_logs/import", params=params, files={"file": ("log.txt", b"")})
+    assert res.json() == {"import_cnt": 0, "skipped_cnt": 0, "range_start": None, "range_end": None}
 
 
 def _old_schema_engine(tmp_path, duplicate: bool):

@@ -26,7 +26,12 @@ async def import_log(
         result = parse_and_import(character_id, user_name, content, db)
     except LogFormatError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"import_cnt": result.inserted, "skipped_cnt": result.skipped}
+    return {
+        "import_cnt": result.inserted,
+        "skipped_cnt": result.skipped,
+        "range_start": result.range_start,
+        "range_end": result.range_end,
+    }
 
 
 @router.get("/", response_model=list[NovelLogResponse])
