@@ -608,17 +608,21 @@ function toggleSortMode() {
   loadList();
 }
 
-// 依清單顯示順序重編整組 sort_order 為 0,1,2…,只送出有變的那幾筆;回傳更新筆數
+// 依清單顯示順序把整組(含停用)重編為 0,1,2…:一次 PUT、同一個交易,不動「更新」時間;回傳位置有變的筆數
 async function renumberGroup(group) {
-  const changed = group.map((it, n) => [it, n]).filter(([it, n]) => it.sort_order !== n);
-  for (const [it, n] of changed) {
-    await api(`/character_contexts/${it.context_id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sort_order: n }),
-    });
-  }
-  return changed.length;
+  const changed = group.filter((it, n) => it.sort_order !== n).length;
+  if (!changed) return 0;
+  const first = group[0];
+  await api("/character_contexts/order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      character_id: first.character_id,
+      context_type: first.context_type,
+      context_ids: group.map(it => it.context_id),
+    }),
+  });
+  return changed;
 }
 
 async function currentGroup(type) {

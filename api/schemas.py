@@ -111,6 +111,22 @@ class ContextUpdate(ContextModify):
     is_active: bool = True
 
 
+# 排序模式整組重排:context_ids 是新的顯示順序,必須剛好是該角色該 type 的全部(含停用)
+class ContextReorder(ContextModify):
+    character_id: int
+    context_type: str
+    context_ids: list[int]
+
+    @field_validator("context_ids")
+    @classmethod
+    def _check_ids(cls, v):
+        if not v:
+            raise ValueError("context_ids 不能是空的")
+        if len(set(v)) != len(v):
+            raise ValueError("context_ids 不能重複")
+        return v
+
+
 class ContextListItem(BaseModel):
     context_id: int
     character_id: int
