@@ -23,17 +23,17 @@ def add_context(
     *,
     sort_order: int = 0,
     active: bool = True,
-) -> None:
-    db.add(
-        CharacterContext(
-            character_id=character_id,
-            context_type=context_type,
-            context_content=content,
-            sort_order=sort_order,
-            is_active=active,
-        )
+) -> int:
+    ctx = CharacterContext(
+        character_id=character_id,
+        context_type=context_type,
+        context_content=content,
+        sort_order=sort_order,
+        is_active=active,
     )
+    db.add(ctx)
     db.flush()
+    return ctx.context_id
 
 
 def add_log(db: Session, character_id: int, content: str, at: str) -> None:

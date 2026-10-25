@@ -5,13 +5,21 @@ from sqlalchemy.orm import Session
 from api.errors import or_404
 from util.db_util import get_db
 from util.models import CharacterContext
-from api.schemas import ContextCreate, ContextUpdate, ContextResponse, ContextListItem, KeywordSuggestionResponse
+from api.schemas import (
+    ContextCreate,
+    ContextUpdate,
+    ContextResponse,
+    ContextListItem,
+    ContextReorder,
+    KeywordSuggestionResponse,
+)
 from service.keyword_service import (
     KEYWORD_SEPARATOR,
     KEYWORDS_MAX_CHARS,
     ContextNotFoundError,
     suggest_keywords,
 )
+from service.character_context_service import GroupMismatchError, reorder_contexts
 from service.prompt_service import PromptNotFoundError
 from util.ai_client import AIBlockedError
 from util.crud.character_context import (
@@ -36,6 +44,20 @@ def create(context_create: ContextCreate, db: Session = Depends(get_db)):
 @router.get("/", response_model=list[ContextListItem])
 def list_by_character(character_id: int, db: Session = Depends(get_db)):
     return get_contexts_by_character(db, character_id)
+
+
+# 排序模式整組重排:一個 request 一個交易,不更新 updated_at(「更新」只代表內容被改過)。
+# 要排在 /{context_id} 之前,路徑才不會被當成 context_id
+@router.put("/order", response_model=list[ContextListItem])
+def reorder(body: ContextReorder, db: Session = Depends(get_db)):
+    or_404(get_character(db, body.character_id), "Character", body.character_id)
+    try:
+        return reorder_contexts(db, body.character_id, body.context_type, body.context_ids)
+    except GroupMismatchError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "context_ids 必須剛好是整組(含停用)", "missing": e.missing, "extra": e.extra},
+        )
 
 
 @router.get("/{context_id}", response_model=ContextResponse)
